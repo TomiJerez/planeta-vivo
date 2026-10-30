@@ -1,0 +1,74 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Planeta Vivo — arena de las 3 IA</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><b>🌍 Planeta Vivo</b><span class="sub">arena por turnos · Claude · Codex · OpenCode</span></div>
+    <div class="hstatus">
+      <span id="turn">turno 1 / 30</span>
+      <span id="phase" class="badge">esperando</span>
+      <span id="countdown">—</span>
+      <span id="energy" title="energía divina">✨ 4/10</span>
+    </div>
+    <div class="controls">
+      <label class="fld">semilla <input id="seed" value="1234" /></label>
+      <button id="newmap">planeta nuevo</button>
+      <button id="force" class="primary">resolver turno ⏭</button>
+      <label class="fld"><input type="checkbox" id="yields" /> rindes</label>
+      <label class="fld"><input type="checkbox" id="autobots" checked /> bots de respaldo</label>
+    </div>
+  </header>
+
+  <section class="stage">
+    <div class="stage-top">
+      <span id="planetinfo">cargando planeta…</span>
+      <span id="conns"></span>
+    </div>
+    <div class="deadlinebar"><i id="deadlinefill"></i></div>
+    <div class="canvaswrap">
+      <canvas id="map"></canvas>
+      <div id="tooltip"></div>
+      <canvas id="mini" class="minimap" title="clic para viajar"></canvas>
+      <div class="zoomui">
+        <button id="zout" title="alejar">−</button>
+        <span id="zoomlbl">100%</span>
+        <button id="zin" title="acercar">+</button>
+        <button id="zfit" title="ver todo el planeta">⤢</button>
+      </div>
+      <div class="maphint">rueda = zoom · arrastrá = mover · clic = apuntar poder</div>
+    </div>
+    <div id="selbar" class="selbar"><span class="hint">hacé clic en un casillero para apuntar un poder divino</span></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="cards3" id="cards"></section>
+
+  <section class="bottom">
+    <div class="logbox">
+      <h4>crónica del planeta</h4>
+      <div id="log"></div>
+    </div>
+    <div class="panel">
+      <h4>conectar las plataformas</h4>
+      <div id="keylist"></div>
+      <div class="keyhint">
+        Pegá esta clave en el prompt de cada IA.<br />
+        <code>GET /api/state?key=…</code> estado · <code>POST /api/orders</code> órdenes · <code>/api/rules</code> reglas.
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="over" id="over"><div class="mod" id="mod"></div></div>
+<div id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
+
