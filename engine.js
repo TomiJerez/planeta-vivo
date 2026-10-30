@@ -4,7 +4,7 @@
  * Reglas deterministas, resolución simultánea. Sin dependencias.
  */
 
-const W = 120, H = 80, MAX_TURNS = 30;
+const W = 240, H = 160, MAX_TURNS = 60;
 
 const BIOMES = {
   agua:     { n: 'océano',   c: '#0f344b', food: 0, mat: 0, land: false },
@@ -48,6 +48,21 @@ const POWERS = {
   veta:       { name: 'veta oculta',   icon: '💎', cost: 3, target: 'tile',    desc: '+1 permanente a un recurso del casillero' },
   fertilidad: { name: 'fertilidad',    icon: '🌱', cost: 2, target: 'tile',    desc: '+1 comida permanente (máx 5)' }
 };
+
+/* Eras: el desarrollo va de la prehistoria al futuro y es lento a propósito.
+   Cada era se paga con ciencia acumulada y abre radio de trabajo (espacio),
+   capacidad por refugio y techo de población. Los rindes del terreno NO suben:
+   lo que crece es el alcance, así el progreso es territorial, no inflacionario. */
+const ERAS = [
+  { n: 'prehistoria', icon: '🪨', sci: 0,   radius: 5.6,  cap: 4,  popMax: 20 },
+  { n: 'neolítico',   icon: '🌾', sci: 30,  radius: 7.0,  cap: 5,  popMax: 26 },
+  { n: 'clásica',     icon: '🏛', sci: 90,  radius: 8.5,  cap: 6,  popMax: 34 },
+  { n: 'industrial',  icon: '⚙️', sci: 180, radius: 10.0, cap: 7,  popMax: 44 },
+  { n: 'moderna',     icon: '🔌', sci: 300, radius: 12.5, cap: 8,  popMax: 56 },
+  { n: 'futurista',   icon: '🚀', sci: 440, radius: 15.0, cap: 10, popMax: 72 }
+];
+const eraOf = f => ERAS[clamp(f.era || 0, 0, ERAS.length - 1)];
+const nextEra = f => ERAS[(f.era || 0) + 1] || null;
 
 /* ------------------------------- util ------------------------------- */
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -278,6 +293,7 @@ function createWorld({ seed, maxTurns = MAX_TURNS, keys = {} }) {
       x: sp.x, y: sp.y,
       potential: Math.round(sp.s),
       people: [], food: 16, mat: 4, sci: 0, shelters: 0, morale: 70, progress: 0,
+      era: 0,
       alive: true, submitted: false, fallback: false, lastSeen: 0, lastOrderAt: 0,
       orders: { food: 0, mat: 0, build: 0, explore: 0, rest: 0 },
       lastReport: null,
@@ -331,7 +347,7 @@ function revealCircle(world, cx, cy, r) {
 /* ------------------------------- IA ------------------------------- */
 const AI_STYLE = {
   claude:   { food: 0.40, mat: 0.20, build: 0.22, explore: 0.14, rest: 0.04 },
-  codex:    { food: 0.32, mat: 0.30, build: 0.26, explore: 0.08, rest: 0.04 },
+  codex:    { food: 0.34, mat: 0.27, build: 0.24, explore: 0.11, rest: 0.04 },
   opencode: { food: 0.34, mat: 0.18, build: 0.14, explore: 0.30, rest: 0.04 }
 };
 
@@ -352,18 +368,24 @@ function botOrders(f, turn) {
   const base = AI_STYLE[f.id] || AI_STYLE.claude;
   const w = { ...base };
   const pop = f.people.length || 1;
-  const cap = f.shelters * 4;
+  const era = eraOf(f);
+  const cap = f.shelters * era.cap;
 
   // emergencia: sin comida no hay nada
   if (f.food < pop * 0.8) return distribute(pop, { food: 0.92, mat: 0.03, build: 0, explore: 0.05, rest: 0 });
   if (f.food < pop * 1.6) { w.food += 0.55; w.explore *= 0.3; w.rest *= 0.5; w.build *= 0.6; }
   else w.food = Math.max(w.food, 0.34);
 
-  if (f.mat < 3) { w.build *= 0.25; w.mat += 0.14; }
+  const matNeed = 3 + Math.floor(f.shelters / 4);   // los refugios se encarecen con la cantidad
+  if (f.mat < matNeed) { w.build *= 0.25; w.mat += 0.14; }
+  const needShelters = Math.ceil(pop / era.cap);
   if (cap < pop + 1) { w.build += 0.22; w.mat += 0.10; }
-  if (f.shelters >= Math.ceil(pop / 4) + 1) { w.build *= 0.25; w.food += 0.08; }
+  else if (f.shelters >= needShelters + 1) { w.build = Math.min(w.build, 0.03); w.food += 0.06; w.explore += 0.03; }
   if (turn < 3) { w.explore *= 0.25; w.food += 0.10; }
   if (f.morale < 45) w.rest += 0.08;
+  // empujón de investigación cuando falta poco para la próxima era
+  const nx = nextEra(f);
+  if (nx && nx.sci - f.sci < 20 && f.food > pop * 1.6) { w.explore += 0.18; w.build *= 0.8; }
   return distribute(pop, w);
 }
 
@@ -372,11 +394,12 @@ function workTiles(world, f, kind) {
   const cache = f._cache || (f._cache = {});
   if (cache[kind]) return cache[kind];
   const list = [];
+  const reach = eraOf(f).radius;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const t = world.grid[y][x];
     if (!t.land || t.b === 'agua') continue;
     const dist = Math.hypot(x - f.x, y - f.y);
-    if (dist > 5.6) continue;
+    if (dist > reach) continue;
     const val = kind === 'food'
       ? t.food + (t.veta === 'food' ? 1 : 0)
       : t.mat + (t.veta === 'mat' ? 1 : 0);
@@ -432,7 +455,7 @@ function resolveFaction(world, f, rng) {
     }
 
     if (task === 'explore') {
-      d.sci += 1;
+      d.sci += 1 + (f.era || 0) * 0.35;
       d.morale += 0.5;
       const ang = rng() * Math.PI * 2, r = 3.5 + rng() * 6.5;
       p.tx = clamp(f.x + Math.cos(ang) * r, 0.4, W - 0.4);
@@ -443,8 +466,9 @@ function resolveFaction(world, f, rng) {
     }
 
     if (task === 'build') {
-      if (f.mat + d.mat >= 2) {
-        d.mat -= 2;
+      const cost = 2 + Math.floor(f.shelters / 4);   // cada tanda de refugios cuesta más
+      if (f.mat + d.mat >= cost) {
+        d.mat -= cost;
         d.progress += mul;
         p.tx = f.x + 0.5 + (rng() - 0.5) * 1.6;
         p.ty = f.y + 0.5 + (rng() - 0.5) * 1.6;
@@ -529,16 +553,20 @@ function applyDeltas(world, f, d, rng, report, logs) {
     }
   }
 
-  const cap = f.shelters * 4;
-  if (f.people.length > 0 && f.people.length < 20 && f.people.length < cap && f.food > f.people.length * 2 + 3) {
-    f.food -= 3;
-    const p = addPerson(f, rng);
-    report.births++;
-    report.events.push(`nació una persona (${f.people.length} en total)`);
-    world.fx.push({ x: p.x, y: p.y, type: 'birth' });
+  const era = eraOf(f);
+  const cap = f.shelters * era.cap;
+  if (f.people.length > 0 && f.people.length < era.popMax && f.people.length < cap && f.food > f.people.length * 2.6 + 5) {
+    const cost = 3 + f.people.length * 0.35;   // cada persona nueva sale más cara: desarrollo lento
+    if (f.food >= cost) {
+      f.food -= cost;
+      const p = addPerson(f, rng);
+      report.births++;
+      report.events.push(`nació una persona (${f.people.length} en total)`);
+      world.fx.push({ x: p.x, y: p.y, type: 'birth' });
+    }
   }
 
-  if (f.shelters * 4 < f.people.length) f.morale = clamp(f.morale - 3, 5, 100);
+  if (f.shelters * era.cap < f.people.length) f.morale = clamp(f.morale - 3, 5, 100);
   f.morale = clamp(f.morale, 5, 100);
 }
 
@@ -599,8 +627,18 @@ function roundEvents(world, rng, logs) {
   }
 }
 
-function emptyReport(turn) {
-  return {
+function checkEra(world, f, logs) {
+  let nx = nextEra(f);
+  while (nx && f.sci >= nx.sci) {
+    f.era = (f.era || 0) + 1;
+    f._cache = null;
+    f.morale = clamp(f.morale + 10, 5, 100);
+    logs.push(`${eraOf(f).icon} ${f.name} entra en la era ${eraOf(f).n} (${f.sci.toFixed(0)} de ciencia)`);
+    nx = nextEra(f);
+  }
+}
+
+function emptyReport(turn) {  return {
     turn,
     harvest: { food: 0, mat: 0, sci: 0 },
     deaths: [],
@@ -630,7 +668,7 @@ function resolveTurn(world) {
   }
 
   const results = alive(world).map(f => ({ f, d: resolveFaction(world, f, rng) }));
-  for (const { f, d } of results) applyDeltas(world, f, d, rng, f.lastReport, logs);
+  for (const { f, d } of results) { applyDeltas(world, f, d, rng, f.lastReport, logs); checkEra(world, f, logs); }
 
   roundEvents(world, rng, logs);
 
@@ -775,12 +813,13 @@ function scoreOf(f) {
     refugios: huts * 8,
     comida: Math.round(Math.sqrt(Math.max(0, f.food)) * 6),
     material: Math.round(Math.sqrt(Math.max(0, f.mat)) * 7),
-    ciencia: Math.round(f.sci * 1.6)
+    ciencia: Math.round(f.sci * 1.6),
+    era: (f.era || 0) * 18
   };
 }
 function totalScore(f) {
   const s = scoreOf(f);
-  return s.pop + s.refugios + s.comida + s.material + s.ciencia;
+  return s.pop + s.refugios + s.comida + s.material + s.ciencia + s.era;
 }
 
 /* ---------------------------- snapshot ---------------------------- */
@@ -803,6 +842,11 @@ function snapshot(world, god) {
       pop: f.people.length, food: Math.round(f.food * 10) / 10, mat: Math.round(f.mat * 10) / 10,
       sci: Math.round(f.sci * 10) / 10, shelters: f.shelters, morale: Math.round(f.morale),
       progress: Math.round(f.progress * 10) / 10,
+      era: f.era || 0, eraName: eraOf(f).n, eraIcon: eraOf(f).icon, eraRadius: eraOf(f).radius,
+      eraCap: eraOf(f).cap, eraPopMax: eraOf(f).popMax, eraBase: eraOf(f).sci,
+      nextEraName: nextEra(f) ? nextEra(f).n : null,
+      nextEraAt: nextEra(f) ? nextEra(f).sci : null,
+      nextEraIn: nextEra(f) ? Math.max(0, Math.ceil(nextEra(f).sci - f.sci)) : null,
       submitted: f.submitted, fallback: f.fallback,
       online: Date.now() - f.lastSeen < 90000,
       lastSeenAgo: f.lastSeen ? Date.now() - f.lastSeen : null,
@@ -825,7 +869,7 @@ function mapSnapshot(world) {
 }
 
 module.exports = {
-  W, H, MAX_TURNS, BIOMES, HAZARDS, TASKS, FACTIONS, POWERS,
+  W, H, MAX_TURNS, BIOMES, HAZARDS, TASKS, FACTIONS, POWERS, ERAS,
   createWorld, resolveTurn, setOrders, applyPower, snapshot, mapSnapshot,
   scoreOf, totalScore, botOrders, distribute, alive
 };

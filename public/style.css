@@ -92,6 +92,10 @@ canvas.dragging{cursor:grabbing}
 .stats b{color:#fff;font-weight:600;font-size:14px}
 .morale{height:5px;border-radius:3px;background:#182432;margin-top:9px;overflow:hidden}
 .morale i{display:block;height:100%;background:var(--c);transition:width .35s}
+.era{position:relative;height:16px;border-radius:4px;background:#182432;margin-top:8px;overflow:hidden}
+.era i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#2f5f8f,#5aa9e6);transition:width .35s}
+.era span{position:relative;display:block;font-size:10px;line-height:16px;text-align:center;color:#dce8f5;letter-spacing:.2px}
+.card .head .tag.era{color:#cfe6ff;border-color:#33506e}
 .orow2{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;font-size:13px;color:#8fa3b8;min-height:24px}
 .orow2 .chip{background:#0d1520;border:1px solid #182433;border-radius:6px;padding:2px 8px}
 .orow2 .empty{color:#5b6d80}

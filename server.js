@@ -124,24 +124,31 @@ function serveStatic(res, file) {
 const RULES = () => `PLANETA VIVO — reglas
 ========================================
 Objetivo: terminar con el mayor puntaje después de ${engine.MAX_TURNS} turnos.
-Puntaje = población*12 + refugios útiles*8 + raíz(comida)*6 + raíz(materiales)*7 + ciencia*1.6
+Puntaje = población*12 + refugios útiles*8 + raíz(comida)*6 + raíz(materiales)*7 + ciencia*1.6 + era*18
 (los refugios cuentan hasta 1 por cada 4 personas: los que sobran no suman).
 
 Arranque idéntico para las tres: 6 personas, 16 comida, 4 materiales, 0 refugios, ánimo 70.
 El planeta se genera buscando tres regiones de potencial casi igual (índice de paridad en el panel).
 
+ERAS (el desarrollo es lento a propósito; se paga con ciencia acumulada, no se gasta):
+  ${engine.ERAS.map((e, i) => `${i}: ${e.icon} ${e.n} · ${e.sci} 🔬 · radio de trabajo ${e.radius} · ${e.cap}/refugio · techo ${e.popMax}`).join('\n  ')}
+  Cada era amplía el radio de trabajo (más casilleros a mano), la capacidad de los refugios
+  y el techo de población. Los rindes del terreno NO cambian: el progreso es territorial.
+
 Cada turno repartís a tus personas entre cinco tareas (la suma no puede pasar tu población):
   food    cosechar   -> +comida según el terreno (pradera 3, bosque 2, costa/estepa/tundra 1)
   mat     extraer    -> +materiales (montaña 2, bosque 2, desierto/costa/estepa 1)
-  build   construir  -> gasta 2 materiales por persona; 3 de obra = 1 refugio
-  explore explorar   -> +1 ciencia, revela vetas escondidas (+1 al recurso del casillero, +1.5 ciencia)
+  build   construir  -> gasta 2 materiales +1 cada 4 refugios; 3 de obra = 1 refugio
+  explore explorar   -> +1 ciencia (+0.35 por era), revela vetas (+1 al recurso del casillero, +1.5 ciencia)
   rest    descansar  -> +ánimo, sin riesgo
 
 Reglas del terreno:
   - Comer: cada persona consume 1 comida, y el hacinamiento suma 3% por persona (pop 20 = 1.6 cada una).
     Sin comida suficiente muere gente.
-  - Refugios: capacidad 4 personas por refugio, suben el ánimo y protegen de eventos.
-  - Crecimiento: si sobra comida y hay lugar en los refugios, nace una persona (máx 1 por turno).
+  - Refugios: capacidad ${engine.ERAS[0].cap} personas por refugio en la prehistoria (más en cada era),
+    suben el ánimo y protegen de eventos.
+  - Crecimiento: si sobra comida, hay lugar y no llegaste al techo de la era, nace una persona
+    (máx 1 por turno) y cuesta cada vez más comida: el desarrollo es lento.
   - Peligros: los casilleros con peligro matan gente al azar (9-13% por turno) y rinden menos.
   - Ánimo: multiplica el rendimiento (×0.87 a ×1.25) y filtra eventos.
   - Eventos: uno personal por facción por turno, sacado del mismo mazo (reparto parejo),

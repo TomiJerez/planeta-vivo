@@ -11,7 +11,7 @@ const tooltip = $('#tooltip');
    =================================================================== */
 const TILE = 100;
 const TAU = Math.PI * 2;
-const BASE_BUDGET = 12e6;           // píxeles del lienzo de terreno cacheado (memoria)
+const BASE_BUDGET = 20e6;           // píxeles del lienzo de terreno cacheado (memoria)
 let BASE = 0.35;                    // píxeles cacheados por píxel de mundo (se calcula por mapa)
 const MINI_W = 220;                 // ancho del minimapa en pantalla
 const TASK_COLOR = { food: '#a8e08a', mat: '#d8c08a', build: '#e8a45c', explore: '#8ec7ff', rest: '#aab9c9' };
@@ -238,6 +238,12 @@ function renderCards() {
         .map(([k, v]) => `<span class="chip">${META.TASKS[k].icon} ${v}</span>`).join('')
       : '<span class="empty">—</span>';
     const rep = f.report;
+    const eraPct = f.nextEraAt
+      ? clamp((f.sci - f.eraBase) / Math.max(1, f.nextEraAt - f.eraBase) * 100, 0, 100)
+      : 100;
+    const eraLabel = f.nextEraName
+      ? `${f.eraIcon} ${f.eraName} → ${f.nextEraName} · faltan ${f.nextEraIn} 🔬`
+      : `${f.eraIcon} ${f.eraName} · era final`;
     const repLine = rep
       ? `T${rep.turn}: 🌾${rep.harvest.food >= 0 ? '+' : ''}${rep.harvest.food.toFixed(1)} ⛏+${rep.harvest.mat.toFixed(1)} 🔬+${rep.harvest.sci.toFixed(1)}`
         + (rep.deaths.length ? ` · 💀${rep.deaths.length}` : '')
@@ -254,18 +260,20 @@ function renderCards() {
       <div class="head">
         <span class="nm">${f.name}</span>
         <span class="tag">${f.style}</span>
+        <span class="tag era">${f.eraIcon} ${f.eraName}</span>
         <span class="conn ${f.online ? 'on' : ''}" title="${f.online ? 'plataforma conectada' : 'sin señales'}">${f.online ? '●' : '○'}</span>
         <span class="pts">${f.score} pts</span>
       </div>
       <div style="margin-top:6px">${badge}</div>
       <div class="stats">
-        <span>👥 <b>${f.pop}</b></span>
+        <span title="población / techo de la era">👥 <b>${f.pop}</b><span class="det">/${f.eraPopMax}</span></span>
         <span>🌾 <b>${f.food}</b></span>
         <span>⛏ <b>${f.mat}</b></span>
         <span>🏠 <b>${f.shelters}</b></span>
         <span>🔬 <b>${f.sci}</b></span>
         <span>❤ <b>${f.morale}</b></span>
       </div>
+      <div class="era" title="${esc(eraLabel)}"><i style="width:${eraPct}%"></i><span>${esc(eraLabel)}</span></div>
       <div class="morale"><i style="width:${clamp(f.morale, 0, 100)}%"></i></div>
       <div class="orow2">${orders}</div>
       <div class="report">${esc(repLine)}${f.fallback ? ' · ⚙ jugó el bot' : ''}</div>

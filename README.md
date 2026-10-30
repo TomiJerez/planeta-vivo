@@ -1,6 +1,7 @@
 ﻿# 🌍 Planeta Vivo — arena por turnos para 3 IA
 
-Un planeta aleatorio, tres aldeas idénticas y tres plataformas compitiendo en vivo por HTTP.
+Un planeta gigante, tres aldeas idénticas y tres plataformas compitiendo en vivo por HTTP.
+La partida va de una **civilización prehistórica a una futurista**, despacio: 60 turnos y seis eras.
 Vos mirás desde arriba y podés intervenir como dios.
 
 ## Arrancar
@@ -42,8 +43,8 @@ El archivo `prompt-para-ia.md` tiene el texto para pegarle a Claude, Codex y Ope
 
 ## Qué ve el dios
 
-- **Mapa gigante con zoom y arrastre**: el planeta mide 12000×8000 px de mundo
-  (grid 120×80 casilleros) y arranca viendo el planeta entero a todo el ancho.
+- **Mapa gigante con zoom y arrastre**: el planeta mide 24000×16000 px de mundo
+  (grid 240×160 casilleros, 38.400 casilleros) y arranca viendo el planeta entero a todo el ancho.
   - **Rueda** = zoom hacia donde apuntás (hasta ~780 % del plano, el tope lo fija la memoria del terreno cacheado), **arrastrar** = mover, botones `−  100%  +  ⤢`
     (⤢ vuelve a ver el planeta entero), doble clic = acercar.
   - El minimapa (esquina derecha) muestra el planeta con el recorrido del cámara; **clic**
@@ -66,12 +67,29 @@ El archivo `prompt-para-ia.md` tiene el texto para pegarle a Claude, Codex y Ope
 
 ## Reglas (resumen)
 
-Puntaje final = población×12 + refugios útiles×8 + √comida×6 + √materiales×7 + ciencia×1.6.
+Puntaje final = población×12 + refugios útiles×8 + √comida×6 + √materiales×7 + ciencia×1.6 + era×18.
 
-- Arranque idéntico: 6 personas, 16 comida, 4 materiales, 0 refugios, ánimo 70 (en un mapa de 120×80 casilleros con los asentamientos muy lejos entre sí).
+- **Eras** (desarrollo lento, se pagan con ciencia acumulada — no se gasta):
+  | era | ciencia | radio de trabajo | refugio aloja | techo de población |
+  |---|---|---|---|---|
+  | 🪨 prehistoria | 0 | 5,6 | 4 | 20 |
+  | 🌾 neolítico | 30 | 7,0 | 5 | 26 |
+  | 🏛 clásica | 90 | 8,5 | 6 | 34 |
+  | ⚙️ industrial | 180 | 10,0 | 7 | 44 |
+  | 🔌 moderna | 300 | 12,5 | 8 | 56 |
+  | 🚀 futurista | 440 | 15,0 | 10 | 72 |
+
+  Cada era amplía el **radio de trabajo** (más casilleros a mano = más espacio para crecer),
+  la capacidad de los refugios y el techo de población. Los rindes del terreno **no** suben:
+  el progreso es territorial, no inflacionario. La tarjeta de cada facción muestra la era y
+  cuánta ciencia falta para la siguiente.
+- Arranque idéntico: 6 personas, 16 comida, 4 materiales, 0 refugios, ánimo 70 (en un mapa de
+  240×160 casilleros con los asentamientos muy lejos entre sí).
 - Cada persona come 1 + 3% de hacinamiento (pop 20 → 1.6 cada una).
-- Tareas: cosechar, extraer, construir (2 materiales por persona, 3 de obra = 1 refugio), explorar (+ciencia y vetas), descansar (+ánimo).
-- Un refugio aloja 4 personas; sin lugar no hay nacimientos.
+- Tareas: cosechar, extraer, construir (2 materiales + 1 más cada 4 refugios; 3 de obra = 1 refugio),
+  explorar (+ciencia y vetas), descansar (+ánimo).
+- Nacimientos: sólo si sobra comida, hay lugar en los refugios y no llegaste al techo de la era;
+  cuestan cada vez más comida (3 + 0,35 × población), así el crecimiento es lento.
 - Peligros del terreno: 9–13% de muerte por turno al trabajar ahí, y rinden menos.
 - Eventos: uno personal por facción por turno, del mismo mazo (reparto parejo), y a veces uno global para todos.
 - Resolución simultánea: el orden en que mandan las órdenes no da ninguna ventaja.
@@ -86,6 +104,7 @@ Puntaje final = población×12 + refugios útiles×8 + √comida×6 + √materia
 | `public/` | panel del dios (HTML/CSS/JS, sin build) |
 | `keys.json` | claves de las tres plataformas (se genera sola) |
 | `prompt-para-ia.md` | texto para pegar en cada IA |
+| `simular.js` | simulador headless: partidas completas con los bots, sin servidor ni IAs conectadas |
 
 ## Notas
 

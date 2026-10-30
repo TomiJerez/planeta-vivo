@@ -36,6 +36,7 @@ const IDS = ['claude', 'codex', 'opencode'];
 const stat = () => ({
   partidas: 0, victorias: 0, extintas: 0,
   pts: 0, pop: 0, ref: 0, com: 0, mat: 0, cie: 0,
+  era: 0, eraTurnos: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   ordenes: { food: 0, mat: 0, build: 0, explore: 0, rest: 0 },
   turnosConOrdenes: 0,
   muertesPeligro: 0, muertesHambre: 0, muertesEvento: 0, nacimientos: 0,
@@ -55,6 +56,7 @@ for (const seed of seeds) {
     turnos++;
     for (const f of w.factions) {
       const s = acc[f.id];
+      s.eraTurnos[f.era] = (s.eraTurnos[f.era] || 0) + 1;
       const rep = f.lastReport;
       if (!rep || !rep.orders) continue;
       const total = TASKS.reduce((a, k) => a + (rep.orders[k] || 0), 0) || 1;
@@ -89,6 +91,7 @@ for (const seed of seeds) {
     s.pop += f.people.length;
     s.ref += f.shelters;
     s.com += f.food; s.mat += f.mat; s.cie += f.sci;
+    s.era += f.era || 0;
   }
   const scores = ranked.map(f => engine.totalScore(f));
   for (const id of IDS) acc[id].compas += scores[0] - scores[2];
@@ -131,6 +134,14 @@ for (const id of IDS) {
     num(f2(s.muertesHambre / p), 8) + num(f2(s.muertesEvento / p), 9));
 }
 
+console.log(`\nDESARROLLO (eras)`);
+console.log(pad('plataforma', 12) + num('era fin', 9) + num('prehist.', 10) + num('neolít.', 9) + num('clásica', 9) + num('industr.', 10) + num('moderna', 9) + num('futuro', 8));
+for (const id of IDS) {
+  const s = acc[id], p = s.partidas || 1;
+  console.log(pad(id, 12) + num(f2(s.era / p), 9) +
+    [0, 1, 2, 3, 4, 5].map(e => num(f1((s.eraTurnos[e] || 0) / p), e === 0 ? 10 : e === 3 ? 10 : 9)).join(''));
+}
+
 /* --------------------------- crónica --------------------------- */
 const seedCronica = cronicaSeed ?? seeds[0];
 const w = engine.createWorld({ seed: seedCronica });
@@ -140,7 +151,7 @@ const sigla = { claude: 'Cl', codex: 'Cx', opencode: 'Op' };
 while (w.phase === 'orders') {
   const r = engine.resolveTurn(w);
   if (!r.ok) break;
-  const marcas = ['nació', 'refugio', 'hambruna', 'extinguió', 'plaga', 'enfermedad', 'meteorito', 'temblor'];
+  const marcas = ['nació', 'refugio', 'hambruna', 'extinguió', 'plaga', 'enfermedad', 'meteorito', 'temblor', 'era'];
   const notas = r.logs.filter(l => marcas.some(m => l.includes(m))).map(corto).slice(0, 3);
   const ordenes = w.factions.map(f => {
     const o = f.lastReport && f.lastReport.orders;

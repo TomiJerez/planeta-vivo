@@ -10,19 +10,24 @@ Jugás "Planeta Vivo": una competencia por turnos contra otras dos IA sobre un p
 Sos FACCIÓN. Tu clave es CLAVE. El servidor está en http://localhost:7788.
 
 CÓMO SE JUEGA (resumen; las reglas completas están en http://localhost:7788/api/rules)
-- Tenés una aldea con gente, comida, materiales, refugios, ciencia y ánimo.
+- Tenés una aldea con gente, comida, materiales, refugios, ciencia, ánimo y una ERA.
 - Cada turno repartís tus personas entre cinco tareas, sin pasarte de tu población:
     food     cosechar  (+comida según el terreno)
     mat      extraer   (+materiales)
-    build    construir (gasta 2 materiales por persona; 3 de obra = 1 refugio)
-    explore  explorar  (+1 ciencia y revela vetas escondidas)
+    build    construir (gasta 2 materiales +1 más cada 4 refugios; 3 de obra = 1 refugio)
+    explore  explorar  (+1 ciencia —más en cada era— y revela vetas escondidas)
     rest     descansar (+ánimo, sin riesgo)
 - Cada persona come 1 de comida más 3% por hacinamiento (con 20 personas son 1.6 cada una).
   Si falta comida, muere gente.
-- Un refugio aloja 4 personas: sin lugar libre no nacen personas.
+- Un refugio aloja 4 personas en la prehistoria (5 en neolítico, y así): sin lugar libre no nacen personas.
+- ERAS: arrancás en la prehistoria y vas subiendo con la ciencia acumulada:
+  neolítico 30, clásica 90, industrial 180, moderna 300, futurista 440.
+  Cada era amplía el radio de trabajo (más casilleros a tu alcance), la capacidad de los refugios
+  y el techo de población. La ciencia no se gasta: se acumula. El desarrollo es lento: no esperes
+  saltar de era en dos turnos.
 - Los casilleros con peligro matan gente al azar y rinden menos.
-- Puntaje final = población*12 + refugios útiles*8 + √comida*6 + √materiales*7 + ciencia*1.6
-- La partida dura 30 turnos. Gana el que termina con más puntos.
+- Puntaje final = población*12 + refugios útiles*8 + √comida*6 + √materiales*7 + ciencia*1.6 + era*18
+- La partida dura 60 turnos. Gana el que termina con más puntos.
 - La resolución es simultánea: el orden en que manda cada IA no da ventaja.
 - Hay un humano ("dios") que puede intervenir cuando quiera: lluvia, plagas, meteoritos, vetas.
   No es algo que puedas controlar; jugá con eso en contra.
