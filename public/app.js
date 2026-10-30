@@ -204,7 +204,8 @@ function buildLegend() {
   $('#legend').innerHTML =
     Object.entries(META.BIOMES).map(([k, v]) => `<span><i style="background:${v.c}"></i>${v.n}</span>`).join('') +
     Object.values(META.HAZARDS).map(h => `<span>${h.g} ${h.n}</span>`).join('') +
-    `<span>💎 veta</span><span style="color:#a8e08a">verde = comida</span><span style="color:#d8c08a">ocre = materiales</span>`;
+    `<span>💎 veta</span><span style="color:#a8e08a">verde = comida</span><span style="color:#d8c08a">ocre = materiales</span>` +
+    Object.values(META.BUILDINGS).map(b => `<span title="era ${META.ERAS[b.era].n} · ${b.cost} ⛏ · ${b.desc}">${b.icon} ${b.n}</span>`).join('');
 }
 
 function render() {
@@ -244,6 +245,15 @@ function renderCards() {
     const eraLabel = f.nextEraName
       ? `${f.eraIcon} ${f.eraName} → ${f.nextEraName} · faltan ${f.nextEraIn} 🔬`
       : `${f.eraIcon} ${f.eraName} · era final`;
+    const bchips = Object.entries(f.buildings || {}).filter(([, c]) => c > 0)
+      .map(([k, c]) => `<span class="chip" title="${esc(META.BUILDINGS[k].desc)}">${META.BUILDINGS[k].icon} ${c}</span>`).join('');
+    const proj = f.project && META.BUILDINGS[f.project.key]
+      ? (() => {
+        const b = META.BUILDINGS[f.project.key];
+        const pct = clamp(f.project.prog / b.work * 100, 0, 100);
+        return `<span class="chip proj" title="en obra: ${esc(b.n)}" style="background:linear-gradient(90deg,#1d4b74 0 ${pct}%,#0d1520 ${pct}% 100%)">${b.icon} ${pct.toFixed(0)}%</span>`;
+      })()
+      : '';
     const repLine = rep
       ? `T${rep.turn}: 🌾${rep.harvest.food >= 0 ? '+' : ''}${rep.harvest.food.toFixed(1)} ⛏+${rep.harvest.mat.toFixed(1)} 🔬+${rep.harvest.sci.toFixed(1)}`
         + (rep.deaths.length ? ` · 💀${rep.deaths.length}` : '')
@@ -276,6 +286,7 @@ function renderCards() {
       <div class="era" title="${esc(eraLabel)}"><i style="width:${eraPct}%"></i><span>${esc(eraLabel)}</span></div>
       <div class="morale"><i style="width:${clamp(f.morale, 0, 100)}%"></i></div>
       <div class="orow2">${orders}</div>
+      <div class="builds">${bchips}${proj}${bchips || proj ? '' : '<span class="empty">sin edificios</span>'}</div>
       <div class="report">${esc(repLine)}${f.fallback ? ' · ⚙ jugó el bot' : ''}</div>
       <div class="pwrow">${powers}</div>
     </div>`;

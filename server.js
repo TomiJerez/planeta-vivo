@@ -124,7 +124,7 @@ function serveStatic(res, file) {
 const RULES = () => `PLANETA VIVO — reglas
 ========================================
 Objetivo: terminar con el mayor puntaje después de ${engine.MAX_TURNS} turnos.
-Puntaje = población*12 + refugios útiles*8 + raíz(comida)*6 + raíz(materiales)*7 + ciencia*1.6 + era*18
+Puntaje = población*12 + refugios útiles*8 + raíz(comida)*6 + raíz(materiales)*7 + ciencia*1.6 + era*18 + edificios*10
 (los refugios cuentan hasta 1 por cada 4 personas: los que sobran no suman).
 
 Arranque idéntico para las tres: 6 personas, 16 comida, 4 materiales, 0 refugios, ánimo 70.
@@ -139,8 +139,17 @@ Cada turno repartís a tus personas entre cinco tareas (la suma no puede pasar t
   food    cosechar   -> +comida según el terreno (pradera 3, bosque 2, costa/estepa/tundra 1)
   mat     extraer    -> +materiales (montaña 2, bosque 2, desierto/costa/estepa 1)
   build   construir  -> gasta 2 materiales +1 cada 4 refugios; 3 de obra = 1 refugio
+                        (o construye el edificio que pidas con "blueprint")
   explore explorar   -> +1 ciencia (+0.35 por era), revela vetas (+1 al recurso del casillero, +1.5 ciencia)
   rest    descansar  -> +ánimo, sin riesgo
+
+EDIFICIOS (opcional: en las órdenes mandá "blueprint":"granero")
+  ${Object.entries(engine.BUILDINGS).map(([k, b]) => `${k.padEnd(9)} era ${engine.ERAS[b.era].n.padEnd(11)} ${b.cost} ⛏${b.work} de obra · ${b.desc}`).join('\n  ')}
+  Sin blueprint, la tarea build sigue haciendo refugios. Cada copia cuesta 60 % más materiales.
+  Con 0 personas en build no se avanza la obra (la obra en curso arranca al pagar los materiales).
+  MANTENIMIENTO: cada edificio consume 1 material por turno. Si no alcanza, rinde en proporción
+  (con 6 edificios y 3 materiales, rinden la mitad). Ojo: acopiar materiales no da puntos
+  ilimitados — la raíz del stock, sí; pero el mantenimiento se los come.
 
 Reglas del terreno:
   - Comer: cada persona consume 1 comida, y el hacinamiento suma 3% por persona (pop 20 = 1.6 cada una).
@@ -196,8 +205,8 @@ const server = http.createServer(async (req, res) => {
     if (!fid) return json(res, 401, { ok: false, error: 'clave inválida: pasá ?key=tu-clave' });
 
     const orders = req.method === 'POST'
-      ? (body.orders || body)
-      : { food: url.searchParams.get('food'), mat: url.searchParams.get('mat'), build: url.searchParams.get('build'), explore: url.searchParams.get('explore'), rest: url.searchParams.get('rest') };
+      ? { ...(body.orders || body), blueprint: body.blueprint !== undefined ? body.blueprint : (body.orders || body).blueprint }
+      : { food: url.searchParams.get('food'), mat: url.searchParams.get('mat'), build: url.searchParams.get('build'), explore: url.searchParams.get('explore'), rest: url.searchParams.get('rest'), blueprint: url.searchParams.get('blueprint') };
 
     if (body.note) {
       const f = world.factions.find(x => x.id === fid);
@@ -208,7 +217,7 @@ const server = http.createServer(async (req, res) => {
     const r = engine.setOrders(world, fid, orders);
     if (r.ok) {
       const f = world.factions.find(x => x.id === fid);
-      world.log.unshift({ turn: world.turn, text: `📨 ${f.name} envió sus órdenes: ${Object.entries(r.orders).filter(([, v]) => v > 0).map(([k, v]) => `${engine.TASKS[k].icon}${v}`).join(' ')}`, fid: fid });
+      world.log.unshift({ turn: world.turn, text: `📨 ${f.name} envió sus órdenes: ${Object.entries(r.orders).filter(([, v]) => v > 0).map(([k, v]) => `${engine.TASKS[k].icon}${v}`).join(' ')}${r.blueprint ? ` · obra: ${engine.BUILDINGS[r.blueprint].icon} ${engine.BUILDINGS[r.blueprint].n}` : ''}`, fid: fid });
       if (world.log.length > 200) world.log.length = 200;
       tick();
     }
@@ -222,7 +231,8 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, {
       W: engine.W, H: engine.H, MAX_TURNS: engine.MAX_TURNS,
       BIOMES: engine.BIOMES, HAZARDS: engine.HAZARDS,
-      TASKS: engine.TASKS, FACTIONS: engine.FACTIONS, POWERS: engine.POWERS
+      TASKS: engine.TASKS, FACTIONS: engine.FACTIONS, POWERS: engine.POWERS,
+      ERAS: engine.ERAS, BUILDINGS: engine.BUILDINGS
     });
   }
   if (p === '/api/god') {

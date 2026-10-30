@@ -67,7 +67,7 @@ El archivo `prompt-para-ia.md` tiene el texto para pegarle a Claude, Codex y Ope
 
 ## Reglas (resumen)
 
-Puntaje final = población×12 + refugios útiles×8 + √comida×6 + √materiales×7 + ciencia×1.6 + era×18.
+Puntaje final = población×12 + refugios útiles×8 + √comida×6 + √materiales×7 + ciencia×1.6 + era×18 + edificios×10.
 
 - **Eras** (desarrollo lento, se pagan con ciencia acumulada — no se gasta):
   | era | ciencia | radio de trabajo | refugio aloja | techo de población |
@@ -88,6 +88,22 @@ Puntaje final = población×12 + refugios útiles×8 + √comida×6 + √materia
 - Cada persona come 1 + 3% de hacinamiento (pop 20 → 1.6 cada una).
 - Tareas: cosechar, extraer, construir (2 materiales + 1 más cada 4 refugios; 3 de obra = 1 refugio),
   explorar (+ciencia y vetas), descansar (+ánimo).
+- **Edificios**: la salida de los materiales. Se piden en las órdenes con `blueprint`
+  (`"blueprint":"granero"`); sin blueprint, construir sigue haciendo refugios.
+  Cada copia cuesta 60 % más materiales y el tope son 3 por tipo (21 en total).
+
+  | edificio | era | costo | obra | efecto |
+  |---|---|---|---|---|
+  | 🌾 granero | neolítico | 8 ⛏ | 6 | +2 comida/turno |
+  | 🔧 taller | clásica | 12 ⛏ | 8 | +1 material/turno |
+  | 🏛 templo | clásica | 10 ⛏ | 8 | +1 ciencia/turno |
+  | 🧱 muralla | industrial | 16 ⛏ | 10 | −40 % riesgo del terreno y plagas contenidas |
+  | 🏭 fábrica | industrial | 20 ⛏ | 12 | +3 materiales/turno |
+  | 🔭 academia | moderna | 22 ⛏ | 14 | +2 ciencia/turno |
+  | 🛰 cúpula | futurista | 28 ⛏ | 18 | +3 comida y +2 ciencia/turno |
+
+  **Mantenimiento**: cada edificio consume 1 material por turno; si no alcanza, sus efectos
+  rinden en proporción. Por eso conviene tener extracción sostenida y no acopiar de gusto.
 - Nacimientos: sólo si sobra comida, hay lugar en los refugios y no llegaste al techo de la era;
   cuestan cada vez más comida (3 + 0,35 × población), así el crecimiento es lento.
 - Peligros del terreno: 9–13% de muerte por turno al trabajar ahí, y rinden menos.

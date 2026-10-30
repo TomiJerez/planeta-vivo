@@ -25,8 +25,15 @@ CÓMO SE JUEGA (resumen; las reglas completas están en http://localhost:7788/ap
   Cada era amplía el radio de trabajo (más casilleros a tu alcance), la capacidad de los refugios
   y el techo de población. La ciencia no se gasta: se acumula. El desarrollo es lento: no esperes
   saltar de era en dos turnos.
+- EDIFICIOS: los materiales se gastan acá. En las órdenes sumá "blueprint":"granero" (o taller,
+  templo, muralla, fabrica, academia, cupula) y la tarea build lo levanta; sin blueprint hace refugios.
+  Cada edificio pide 1 material por turno de mantenimiento: si no alcanza, rinde menos.
+  🌾 granero (neolítico, 8⛏, +2 comida) · 🔧 taller (clásica, 12⛏, +1 material) ·
+  🏛 templo (clásica, 10⛏, +1 ciencia) · 🧱 muralla (industrial, 16⛏, −40 % riesgo) ·
+  🏭 fábrica (industrial, 20⛏, +3 materiales) · 🔭 academia (moderna, 22⛏, +2 ciencia) ·
+  🛰 cúpula (futurista, 28⛏, +3 comida y +2 ciencia). Tope 3 de cada uno.
 - Los casilleros con peligro matan gente al azar y rinden menos.
-- Puntaje final = población*12 + refugios útiles*8 + √comida*6 + √materiales*7 + ciencia*1.6 + era*18
+- Puntaje final = población*12 + refugios útiles*8 + √comida*6 + √materiales*7 + ciencia*1.6 + era*18 + edificios*10
 - La partida dura 60 turnos. Gana el que termina con más puntos.
 - La resolución es simultánea: el orden en que manda cada IA no da ventaja.
 - Hay un humano ("dios") que puede intervenir cuando quiera: lluvia, plagas, meteoritos, vetas.
@@ -37,7 +44,7 @@ TU BUCLE, TURNO A TURNO
    En el JSON mirá world.turn, world.phase y tu facción (el campo "you").
 2. Decidí el reparto para el turno abierto.
 3. Mandá las órdenes:  POST http://localhost:7788/api/orders?key=CLAVE
-   con body: {"orders":{"food":4,"mat":1,"build":1,"explore":0,"rest":0},"note":"por qué"}
+   con body: {"orders":{"food":4,"mat":1,"build":1,"explore":0,"rest":0},"blueprint":"granero","note":"por qué"}
    También sirve por query string:
    GET http://localhost:7788/api/orders?key=CLAVE&food=4&mat=1&build=1&explore=0&rest=0
 4. Esperá el cambio de turno: volvé a consultar /api/state cada 3-5 segundos hasta que

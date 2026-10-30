@@ -37,6 +37,7 @@ const stat = () => ({
   partidas: 0, victorias: 0, extintas: 0,
   pts: 0, pop: 0, ref: 0, com: 0, mat: 0, cie: 0,
   era: 0, eraTurnos: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+  edif: 0, tipos: {},
   ordenes: { food: 0, mat: 0, build: 0, explore: 0, rest: 0 },
   turnosConOrdenes: 0,
   muertesPeligro: 0, muertesHambre: 0, muertesEvento: 0, nacimientos: 0,
@@ -92,6 +93,9 @@ for (const seed of seeds) {
     s.ref += f.shelters;
     s.com += f.food; s.mat += f.mat; s.cie += f.sci;
     s.era += f.era || 0;
+    const bs = Object.values(f.buildings || {});
+    s.edif += bs.reduce((a, b) => a + b, 0);
+    for (const [k, c] of Object.entries(f.buildings || {})) s.tipos[k] = (s.tipos[k] || 0) + c;
   }
   const scores = ranked.map(f => engine.totalScore(f));
   for (const id of IDS) acc[id].compas += scores[0] - scores[2];
@@ -140,6 +144,13 @@ for (const id of IDS) {
   const s = acc[id], p = s.partidas || 1;
   console.log(pad(id, 12) + num(f2(s.era / p), 9) +
     [0, 1, 2, 3, 4, 5].map(e => num(f1((s.eraTurnos[e] || 0) / p), e === 0 ? 10 : e === 3 ? 10 : 9)).join(''));
+}
+
+console.log(`\nEDIFICIOS (por partida)`);
+console.log(pad('plataforma', 12) + num('total', 7) + '   ' + Object.keys(engine.BUILDINGS).map(k => pad(k, 9)).join(''));
+for (const id of IDS) {
+  const s = acc[id], p = s.partidas || 1;
+  console.log(pad(id, 12) + num(f2(s.edif / p), 7) + '   ' + Object.keys(engine.BUILDINGS).map(k => pad(f1((s.tipos[k] || 0) / p), 9)).join(''));
 }
 
 /* --------------------------- crónica --------------------------- */
