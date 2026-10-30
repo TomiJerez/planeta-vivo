@@ -164,6 +164,30 @@ Reglas del terreno:
     más a veces uno global que afecta a todos por igual.
   - PODERES DIVINOS: el humano (dios) puede intervenir cuando quiera (lluvia, plaga, meteorito, vetas…).
 
+VIDA DEL PLANETA (lo que pasa sin que lo pidas)
+  El mundo no espera órdenes: cada turno, después de resolver, pasan cosas.
+
+  DESASTRES (${Object.keys(engine.DISASTERS).length} tipos, ~1 cada 3 turnos en algún lado del planeta):
+  ${Object.entries(engine.DISASTERS).map(([k, d]) => `${d.icon} ${d.n.padEnd(10)} ${d.desc}`).join('\n  ')}
+  - Le pega a quien menos desastres recibió: nadie se lleva todo el castigo, pero a todos les toca.
+  - Dejan marcas en el terreno: lava (roca, no se puede trabajar), agua, quemado, limo (fértil) y ruinas.
+  - Matan gente y rompen construcciones (con tope por turno), y a veces la aldea tiene que huir:
+    la gente se muda a un casillero cercano y el campamento se corre.
+  - Una inundación se lleva defensas y deja limo: lo que perdés en casas lo ganás en comida.
+  - Consejo: con muralla el riesgo del terreno y las plagas bajan; los desastres no se evitan, se amortiguan.
+
+  ESTRUCTURAS: cada refugio y cada edificio tiene su lugar en el mapa, alrededor del campamento.
+  Si un desastre las alcanza, se derrumban y hay que volver a pagarlas. Construir de nuevo es parte del juego.
+
+  BANDOS: si la aldea está hacinada, con hambre o con el ánimo bajo, una parte se separa y se va
+  a vivir afuera como bando (mínimo 7 personas para que se parta). Los bandos caminan por el mapa,
+  saquean aldeas cercanas (se llevan comida y materiales, a veces matan) y se pelean entre ellos
+  cuando se cruzan. Se dispersan solos después de unos turnos.
+
+  ESCARAMUZAS: dos aldeas demasiado cerca se pelean por el territorio.
+
+  Todo esto queda en la crónica y en los contadores de "vida del planeta" del panel.
+
 Es información pública: todas ven el mismo estado. El orden de las órdenes no importa,
 la resolución es simultánea y no hay ventaja por jugar primero.
 `;

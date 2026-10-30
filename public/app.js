@@ -224,6 +224,7 @@ function render() {
 
   renderCards();
   renderLog();
+  renderLife();
   renderSel();
   if (ST.phase === 'over' && !overShown) showOver();
 }
@@ -297,6 +298,35 @@ function renderLog() {
   $('#log').innerHTML = ST.log.slice(0, 70).map(e =>
     `<div class="le${e.text.startsWith('✨') ? ' god' : ''}"><span class="t">T${e.turn}</span><span>${esc(e.text)}</span></div>`
   ).join('');
+}
+
+function renderLife() {
+  const box = $('#life');
+  if (!box) return;
+  const ds = ST.disasters || [], rm = ST.roamers || [], st = ST.stats || {};
+
+  const dsChips = ds.map(d =>
+    `<span class="lifechip ds ${esc(d.type)}" title="radio ${d.r} · le quedan ${d.ttl} turno(s)">
+      ${d.icon} ${esc(d.n)} <b>(${Math.round(d.x)},${Math.round(d.y)})</b>
+      <i>${d.ttl}t</i></span>`).join('');
+  const rmChips = rm.map(g =>
+    `<span class="lifechip rm" style="--c:${esc(g.color)}" title="salió de ${esc(g.origin)} · ${g.ttl} turno(s)">
+      🏴 ${esc(g.name)} <b>${g.pop}</b> <i>${g.ttl}t</i></span>`).join('');
+
+  const mark = (n, icon, txt, title) =>
+    `<span class="lifemark${n ? '' : ' off'}" title="${esc(title)}">${icon} <b>${n}</b> ${txt}</span>`;
+
+  box.innerHTML =
+    `<span class="lifelabel">vida del planeta</span>` +
+    (ds.length ? dsChips : `<span class="lifemark off">🌤 sin desastres activos</span>`) +
+    (rm.length ? rmChips : `<span class="lifemark off">🏘 sin bandos sueltos</span>`) +
+    `<span class="lifesep"></span>` +
+    mark(st.disasters || 0, '🌋', 'desastres', 'desastres que arrancaron en la partida') +
+    mark(st.splits || 0, '⚔️', 'separaciones', 'veces que una aldea se partió en bandos') +
+    mark(st.raids || 0, '🏴', 'saqueos', 'ataques de bandos a una aldea') +
+    mark(st.fights || 0, '🗡', 'escaramuzas', 'peleas entre aldeas vecinas') +
+    mark(st.ruins || 0, '🧱', 'ruinas', 'construcciones derrumbadas') +
+    mark(st.killedByDisaster || 0, '💀', 'muertes por desastre', 'gente que murió por desastres');
 }
 
 function renderSel() {
@@ -975,6 +1005,89 @@ function drawDynamic(dt) {
     }
   }
 
+  /* marcas de desastre sobre el terreno: lava, agua, quemado, limo, ruinas */
+  const OV = ST.overlay || {};
+  const ovPaint = (list, paint) => {
+    for (const o of (list || [])) {
+      if (o.x < tx0 - 2 || o.x > tx1 + 2 || o.y < ty0 - 2 || o.y > ty1 + 2) continue;
+      paint(o.x * TILE, o.y * TILE, o);
+    }
+  };
+  const tileRect = (px, py) => { ctx.beginPath(); ctx.rect(px, py, TILE + 0.5, TILE + 0.5); };
+  if (ts >= 1.8) {
+    ovPaint(OV.burn, (px, py) => {
+      ctx.fillStyle = 'rgba(28,18,12,.55)';
+      tileRect(px, py); ctx.fill();
+    });
+    ovPaint(OV.limo, (px, py) => {
+      ctx.fillStyle = 'rgba(96,120,52,.42)';
+      tileRect(px, py); ctx.fill();
+    });
+    ovPaint(OV.ruina, (px, py) => {
+      ctx.fillStyle = 'rgba(92,96,104,.5)';
+      tileRect(px, py); ctx.fill();
+      if (ts >= 22) {
+        const r2 = TILE * 0.16;
+        ctx.fillStyle = 'rgba(176,182,192,.85)';
+        ctx.beginPath();
+        ctx.moveTo(px + TILE * 0.5 - r2, py + TILE * 0.7);
+        ctx.lineTo(px + TILE * 0.5 - r2 * 0.3, py + TILE * 0.34);
+        ctx.lineTo(px + TILE * 0.5 + r2, py + TILE * 0.7);
+        ctx.closePath(); ctx.fill();
+      }
+    });
+    const hot = (Math.sin(now / 380) + 1) / 2;
+    ovPaint(OV.lava, (px, py) => {
+      ctx.fillStyle = `rgba(${200 + hot * 45},${64 + hot * 60},24,.82)`;
+      tileRect(px, py); ctx.fill();
+      if (ts >= 20) {
+        ctx.fillStyle = `rgba(255,${190 + hot * 50},90,${0.4 + hot * 0.35})`;
+        ctx.beginPath();
+        ctx.arc(px + TILE * (0.35 + ((px * 7 + py * 13) % 30) / 100), py + TILE * 0.6, TILE * 0.06, 0, TAU);
+        ctx.fill();
+      }
+    });
+    ovPaint(OV.flood, (px, py) => {
+      ctx.fillStyle = 'rgba(48,104,168,.62)';
+      tileRect(px, py); ctx.fill();
+      if (ts >= 20) {
+        ctx.strokeStyle = 'rgba(190,224,255,.35)';
+        ctx.lineWidth = 1.2;
+        const wob = Math.sin(now / 500 + px * 0.05) * TILE * 0.08;
+        ctx.beginPath();
+        ctx.moveTo(px + TILE * 0.2, py + TILE * 0.5 + wob);
+        ctx.lineTo(px + TILE * 0.8, py + TILE * 0.5 + wob);
+        ctx.stroke();
+      }
+    });
+  }
+
+  /* estructuras: cada edificio tiene su lugar alrededor del campamento */
+  for (const f of ST.factions) {
+    for (const st of (f.structures || [])) {
+      const px = st.x * TILE, py = st.y * TILE;
+      if (st.x < tx0 - 1 || st.x > tx1 + 1 || st.y < ty0 - 1 || st.y > ty1 + 1) continue;
+      const cx = px + TILE / 2, cy = py + TILE * 0.55;
+      ctx.fillStyle = 'rgba(0,0,0,.32)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + TILE * 0.2, TILE * 0.3, TILE * 0.12, 0, 0, TAU);
+      ctx.fill();
+      const minW = 9 / cam.s, minH = 7 / cam.s;
+      const w2 = Math.max(TILE * (st.key === 'muralla' ? 0.62 : 0.4), minW);
+      const h2 = Math.max(TILE * (st.key === 'muralla' ? 0.2 : 0.26), minH);
+      ctx.fillStyle = st.key === 'muralla' ? '#8d8f96' : hexA(f.color, 0.9);
+      ctx.beginPath();
+      ctx.rect(cx - w2 / 2, cy - h2 / 2, w2, h2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(6,10,14,.85)'; ctx.lineWidth = 1.4; ctx.stroke();
+      if (ts >= 24) {
+        ctx.font = `${Math.round(TILE * 0.26)}px serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(st.key === 'refugio' ? '🛖' : ((META.BUILDINGS[st.key] || {}).icon || '▪'), cx, cy - TILE * 0.18);
+      }
+    }
+  }
+
   /* selección / hover: aro redondo, sin cuadros */
   const markRing = (t, color, fill, w) => {
     const cx = t.x * TILE + TILE / 2, cy = t.y * TILE + TILE / 2;
@@ -1057,6 +1170,66 @@ function drawDynamic(dt) {
     }
   }
 
+  /* bandos sueltos: grupo que se fue de la aldea y anda saqueando */
+  for (const g of (ST.roamers || [])) {
+    const gx = (g.x + 0.5) * TILE, gy = (g.y + 0.5) * TILE;
+    if (g.x < tx0 - 3 || g.x > tx1 + 3 || g.y < ty0 - 3 || g.y > ty1 + 3) continue;
+    const rBand = Math.max(TILE * 0.95, 9 / cam.s);
+    ctx.fillStyle = hexA(g.color, 0.16);
+    ctx.beginPath(); ctx.arc(gx, gy, rBand * 1.15, 0, TAU); ctx.fill();
+    ctx.setLineDash([Math.max(TILE * 0.16, 3 / cam.s), Math.max(TILE * 0.12, 2 / cam.s)]);
+    ctx.strokeStyle = hexA(g.color, 0.55);
+    ctx.lineWidth = Math.max(1.2, ts * 0.02);
+    ctx.beginPath(); ctx.arc(gx, gy, rBand, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    const n = Math.max(2, g.figures || 3);
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * TAU + now / 2400;
+      const rad = Math.max(TILE * 0.42, 4 / cam.s);
+      drawPerson(gx + Math.cos(ang) * rad, gy + Math.sin(ang) * rad, g.color, 'explore');
+    }
+    if (ts >= 22) {
+      const fs2 = Math.max(TILE * 0.19, 10 / cam.s);
+      ctx.font = `bold ${fs2}px ui-monospace, monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const label = `🏴 ${g.name} · ${g.pop}`;
+      const lw2 = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(4,8,12,.8)';
+      ctx.beginPath();
+      ctx.rect(gx - lw2 / 2 - 5, gy - TILE * 0.95 - fs2 - 5, lw2 + 10, fs2 + 8);
+      ctx.fill();
+      ctx.fillStyle = hexA(g.color, 0.95);
+      ctx.fillText(label, gx, gy - TILE * 0.95 - fs2 / 2 - 1);
+    }
+  }
+
+  /* desastres activos: el epicentro se mueve y late */
+  for (const ds of (ST.disasters || [])) {
+    const cx = (ds.x + 0.5) * TILE, cy = (ds.y + 0.5) * TILE;
+    const k = (Math.sin(now / 260) + 1) / 2;
+    const rr = Math.max(TILE * 0.9, ds.r * TILE * (0.9 + k * 0.18), 9 / cam.s);
+    let c1 = 'rgba(255,180,80,.35)', c2 = 'rgba(255,120,50,.85)';
+    if (ds.type === 'inundacion') { c1 = 'rgba(90,170,255,.3)'; c2 = 'rgba(150,215,255,.9)'; }
+    if (ds.type === 'rayo') { c1 = 'rgba(200,220,255,.35)'; c2 = 'rgba(255,255,255,.95)'; }
+    if (ds.type === 'incendio') { c1 = 'rgba(255,110,40,.32)'; c2 = 'rgba(255,190,70,.95)'; }
+    if (ds.type === 'erupcion') { c1 = 'rgba(220,70,30,.35)'; c2 = 'rgba(255,140,60,.95)'; }
+    if (ds.type === 'tornado') { c1 = 'rgba(190,200,215,.25)'; c2 = 'rgba(235,242,255,.9)'; }
+    const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+    g2.addColorStop(0, c2); g2.addColorStop(0.55, c1); g2.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.fill();
+    ctx.strokeStyle = c2; ctx.lineWidth = Math.max(1.4, ts * 0.022);
+    ctx.beginPath(); ctx.arc(cx, cy, rr * (0.72 + k * 0.22), 0, TAU); ctx.stroke();
+    if (ts >= 5) {
+      const fs3 = Math.max(TILE * 0.3, 12 / cam.s);
+      ctx.font = `${fs3}px serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.globalAlpha = 0.85 + k * 0.15;
+      ctx.fillText(ds.icon, cx, cy);
+      ctx.globalAlpha = 1;
+    }
+  }
+
   if (sel) markRing(sel, 'rgba(255,212,121,.95)', 'rgba(255,212,121,.12)', 1);
 
   /* efectos */
@@ -1077,6 +1250,103 @@ function drawDynamic(dt) {
     } else if (e.type === 'birth') {
       ctx.strokeStyle = '#8ef0b8'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(ex, ey, TILE * (0.12 + k * 0.4), 0, TAU); ctx.stroke();
+    } else if (e.type === 'bolt') {
+      ctx.strokeStyle = `rgba(255,255,240,${1 - k})`;
+      ctx.lineWidth = Math.max(1.6, TILE * 0.06);
+      ctx.beginPath();
+      let bx = ex, by = ey - TILE * 3.2;
+      ctx.moveTo(bx, by);
+      for (let i = 1; i <= 6; i++) {
+        bx = ex + Math.sin(i * 2.7 + e.x) * TILE * 0.28;
+        by = ey - TILE * 3.2 + (TILE * 3.2) * (i / 6);
+        ctx.lineTo(bx, by);
+      }
+      ctx.stroke();
+      ctx.fillStyle = `rgba(255,250,210,${0.5 * (1 - k)})`;
+      ctx.beginPath(); ctx.arc(ex, ey, TILE * (0.3 + k * 0.9), 0, TAU); ctx.fill();
+    } else if (e.type === 'eruption') {
+      const rr = TILE * ((e.r || 2) * (0.4 + k * 0.8));
+      ctx.fillStyle = `rgba(255,120,40,${0.45 * (1 - k)})`;
+      ctx.beginPath(); ctx.arc(ex, ey, rr, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(255,200,90,${0.9 * (1 - k)})`;
+      ctx.lineWidth = Math.max(1.5, TILE * 0.05);
+      ctx.beginPath(); ctx.arc(ex, ey, rr, 0, TAU); ctx.stroke();
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * TAU + e.age * 1.6 + (e.x + e.y);
+        const d = rr * (0.35 + k * 0.7);
+        ctx.fillStyle = `rgba(${210 + i * 8},${80 + i * 18},30,${0.8 * (1 - k)})`;
+        ctx.beginPath();
+        ctx.arc(ex + Math.cos(a) * d, ey + Math.sin(a) * d - k * TILE, TILE * 0.09, 0, TAU);
+        ctx.fill();
+      }
+    } else if (e.type === 'flood') {
+      const rr = TILE * ((e.r || 2.5) * (0.5 + k * 0.9));
+      ctx.strokeStyle = `rgba(140,205,255,${0.75 * (1 - k)})`;
+      ctx.lineWidth = Math.max(1.5, TILE * 0.04);
+      for (let j = 0; j < 2; j++) {
+        ctx.beginPath(); ctx.arc(ex, ey, rr * (0.7 + j * 0.35), 0, TAU); ctx.stroke();
+      }
+      ctx.fillStyle = `rgba(70,140,215,${0.18 * (1 - k)})`;
+      ctx.beginPath(); ctx.arc(ex, ey, rr, 0, TAU); ctx.fill();
+    } else if (e.type === 'fire') {
+      const rr = TILE * ((e.r || 1.5) * (0.4 + k * 0.9));
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * TAU + e.age * 2.2;
+        const d = rr * (0.5 + 0.4 * Math.cos(e.age * 3 + i));
+        ctx.fillStyle = `rgba(255,${110 + i * 30},40,${0.55 * (1 - k)})`;
+        ctx.beginPath();
+        ctx.arc(ex + Math.cos(a) * d, ey + Math.sin(a) * d - k * TILE * 0.6, TILE * 0.22 * (1 - k * 0.5), 0, TAU);
+        ctx.fill();
+      }
+    } else if (e.type === 'tornado') {
+      for (let i = 1; i <= 5; i++) {
+        const rr = TILE * (0.16 + i * 0.16) * (1 - k * 0.3);
+        const off = Math.sin(e.age * 6 + i) * TILE * 0.12;
+        ctx.strokeStyle = `rgba(226,236,250,${0.7 * (1 - k)})`;
+        ctx.lineWidth = Math.max(1.2, TILE * 0.03);
+        ctx.beginPath();
+        ctx.ellipse(ex + off, ey - i * TILE * 0.3 + TILE * 0.3, rr, rr * 0.34, 0, 0, TAU);
+        ctx.stroke();
+      }
+    } else if (e.type === 'spark') {
+      ctx.fillStyle = `rgba(255,190,80,${0.9 * (1 - k)})`;
+      ctx.beginPath(); ctx.arc(ex, ey - k * TILE * 1.2, TILE * 0.07, 0, TAU); ctx.fill();
+    } else if (e.type === 'flee') {
+      ctx.strokeStyle = `rgba(255,232,190,${0.8 * (1 - k)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ex, ey, TILE * (0.1 + k * 0.35), 0, TAU); ctx.stroke();
+      const a2 = Math.atan2(e.y - (e.y | 0) - 0.5, e.x - (e.x | 0) - 0.5);
+      ctx.beginPath();
+      ctx.moveTo(ex + Math.cos(a2) * TILE * 0.2, ey + Math.sin(a2) * TILE * 0.2);
+      ctx.lineTo(ex + Math.cos(a2) * TILE * (0.4 + k * 0.5), ey + Math.sin(a2) * TILE * (0.4 + k * 0.5));
+      ctx.stroke();
+    } else if (e.type === 'skirmish') {
+      ctx.strokeStyle = `rgba(255,120,90,${0.9 * (1 - k)})`;
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) {
+        const a3 = i * 2.4 + e.age * 3;
+        const d = TILE * (0.16 + k * 0.3);
+        ctx.beginPath();
+        ctx.moveTo(ex + Math.cos(a3) * d, ey + Math.sin(a3) * d);
+        ctx.lineTo(ex + Math.cos(a3 + 0.9) * d * 1.6, ey + Math.sin(a3 + 0.9) * d * 1.6);
+        ctx.stroke();
+      }
+    } else if (e.type === 'build') {
+      ctx.strokeStyle = `rgba(150,235,175,${0.85 * (1 - k)})`;
+      ctx.lineWidth = 2;
+      const s2 = TILE * (0.16 + k * 0.34);
+      ctx.beginPath();
+      ctx.rect(ex - s2 / 2, ey - s2 / 2, s2, s2);
+      ctx.stroke();
+    } else if (e.type === 'collapse') {
+      ctx.fillStyle = `rgba(160,164,172,${0.75 * (1 - k)})`;
+      for (let i = 0; i < 6; i++) {
+        const a4 = (i / 6) * TAU + e.age;
+        const d = TILE * (0.08 + k * 0.6);
+        ctx.beginPath();
+        ctx.arc(ex + Math.cos(a4) * d, ey + Math.sin(a4) * d + k * TILE * 0.3, TILE * 0.05, 0, TAU);
+        ctx.fill();
+      }
     } else {
       ctx.strokeStyle = '#ffb35c'; ctx.lineWidth = 3.4;
       ctx.beginPath(); ctx.arc(ex, ey, TILE * (0.16 + k * 0.55), 0, TAU); ctx.stroke();

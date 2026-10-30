@@ -33,6 +33,16 @@ CÓMO SE JUEGA (resumen; las reglas completas están en http://localhost:7788/ap
   🏭 fábrica (industrial, 20⛏, +3 materiales) · 🔭 academia (moderna, 22⛏, +2 ciencia) ·
   🛰 cúpula (futurista, 28⛏, +3 comida y +2 ciencia). Tope 3 de cada uno.
 - Los casilleros con peligro matan gente al azar y rinden menos.
+- EL PLANETA ES VIVO: además de tus órdenes, cada turno pasan cosas.
+  DESASTRES (~1 cada 3 turnos): ⚡ rayo (mata y quema), 🌋 erupción (la lava crece y arrasa),
+  🌊 inundación (se lleva construcciones y deja limo fértil), 🔥 incendio (se propaga por bosque y pradera)
+  y 🌪 tornado (avanza y se lleva lo que encuentra). Le pegan a quien menos desastres recibió, así que
+  te van a tocar. Matan gente, derrumban construcciones y a veces la aldea tiene que huir.
+  Si perdés tu campamento o tus edificios, reconstruí: hay que pagarlos de nuevo.
+- BANDOS: si tu aldea está hacinada, con hambre o con el ánimo bajo, una parte se separa (mínimo 7
+  personas) y se va como bando. Los bandos saquean aldeas cercanas y se pelean entre ellos.
+  Traducción: no dejes el ánimo ni la comida al límite si tenés la aldea llena.
+- La muralla amortigua el riesgo y contiene plagas: es la única defensa contra los desastres.
 - Puntaje final = población*12 + refugios útiles*8 + √comida*6 + √materiales*7 + ciencia*1.6 + era*18 + edificios*10
 - La partida dura 60 turnos. Gana el que termina con más puntos.
 - La resolución es simultánea: el orden en que manda cada IA no da ventaja.

@@ -297,6 +297,12 @@ function createWorld({ seed, maxTurns = MAX_TURNS, keys = {} }) {
     deck: [],
     log: [],
     fx: [],
+    /* vida del planeta */
+    disasters: [],
+    roamers: [],
+    hits: {},
+    overlay: { lava: [], flood: [], burn: [], limo: [], ruina: [] },
+    stats: { disasters: 0, splits: 0, raids: 0, fights: 0, ruins: 0, killedByDisaster: 0 },
     mapVersion: 1,
     turnStart: Date.now(),
     settings: { autoBots: true, waitMs: 90000 },
@@ -313,7 +319,7 @@ function createWorld({ seed, maxTurns = MAX_TURNS, keys = {} }) {
       x: sp.x, y: sp.y,
       potential: Math.round(sp.s),
       people: [], food: 16, mat: 4, sci: 0, shelters: 0, morale: 70, progress: 0,
-      era: 0, buildings: {}, project: null, blueprint: null,
+      era: 0, buildings: {}, project: null, blueprint: null, structures: [],
       alive: true, submitted: false, fallback: false, lastSeen: 0, lastOrderAt: 0,
       orders: { food: 0, mat: 0, build: 0, explore: 0, rest: 0 },
       lastReport: null,
@@ -543,6 +549,7 @@ function resolveFaction(world, f, rng) {
           f.buildings[key] = (f.buildings[key] || 0) + 1;
           f.project = null;
           f.morale = clamp(f.morale + 4, 5, 100);
+          placeStructure(world, f, key, rng);
           d.builds.push(key);
         }
       }
@@ -617,6 +624,7 @@ function applyDeltas(world, f, d, rng, report, logs) {
     f.shelters++;
     f.morale = clamp(f.morale + 6, 5, 100);
     report.events.push(`levantó un refugio (${f.shelters})`);
+    placeStructure(world, f, 'refugio', rng);
   }
 
   for (const id of d.deaths) killPerson(world, f, id, 'un peligro del terreno', report, logs);
@@ -662,6 +670,426 @@ function applyDeltas(world, f, d, rng, report, logs) {
   f.morale = clamp(f.morale, 5, 100);
 }
 
+/* ------------------------- vida del planeta -------------------------
+   Estructuras con lugar, desastres que se propagan y bandos que se pelean.
+   Todo lo que pasa acá se ve en el mapa y queda en la crónica. */
+let structureSeq = 0, roamerSeq = 0;
+
+const labelOf = key => key === 'refugio'
+  ? 'un refugio'
+  : (BUILDINGS[key] ? `${BUILDINGS[key].icon} ${BUILDINGS[key].n}` : key);
+
+function placeStructure(world, f, key, rng) {
+  for (let tries = 0; tries < 40; tries++) {
+    const ang = rng() * Math.PI * 2;
+    const rad = 1.3 + rng() * 2.5;
+    const x = Math.round(f.x + Math.cos(ang) * rad);
+    const y = Math.round(f.y + Math.sin(ang) * rad);
+    const t = world.grid[y] && world.grid[y][x];
+    if (!t || !t.land || t.b === 'agua' || t.b === 'costa') continue;
+    if (f.structures.some(s2 => s2.x === x && s2.y === y)) continue;
+    const s2 = { id: ++structureSeq, key, x, y, hp: key === 'muralla' ? 3 : 2 };
+    f.structures.push(s2);
+    world.fx.push({ x: x + 0.5, y: y + 0.5, type: 'build' });
+    return s2;
+  }
+  return null;
+}
+
+function destroyStructure(world, f, st, cause, logs) {
+  const i = f.structures.indexOf(st);
+  if (i < 0) return false;
+  f.structures.splice(i, 1);
+  world.overlay.ruina.push({ x: st.x, y: st.y, ttl: 6 });
+  world.fx.push({ x: st.x + 0.5, y: st.y + 0.5, type: 'collapse' });
+  if (st.key === 'refugio') f.shelters = Math.max(0, f.shelters - 1);
+  else if (f.buildings && f.buildings[st.key]) {
+    f.buildings[st.key] = Math.max(0, f.buildings[st.key] - 1);
+    if (!f.buildings[st.key]) delete f.buildings[st.key];
+  }
+  f.morale = clamp(f.morale - 4, 5, 100);
+  logs.push(`${f.name}: se derrumbó ${labelOf(st.key)} (${cause})`);
+  const rep = f.lastReport;
+  if (rep) rep.events.push(`se derrumbó ${labelOf(st.key)} (${cause})`);
+  world.stats.ruins++;
+  return true;
+}
+
+/* marcas temporales sobre el terreno: lava, agua, quemado, limo, ruinas */
+function addOverlay(world, kind, x, y, ttl) {
+  const list = world.overlay[kind];
+  if (!list || x < 0 || y < 0 || x >= W || y >= H) return;
+  const prev = list.find(o => o.x === x && o.y === y);
+  if (prev) { prev.ttl = Math.max(prev.ttl, ttl); return; }
+  list.push({ x, y, ttl });
+}
+
+function stepOverlay(world) {
+  for (const kind of Object.keys(world.overlay)) {
+    const list = world.overlay[kind];
+    for (let i = list.length - 1; i >= 0; i--) if (--list[i].ttl <= 0) list.splice(i, 1);
+  }
+}
+
+function killInRadius(world, cx, cy, r, cause, rng, logs, chance = 1, max = 99) {
+  let n = 0;
+  for (const f of alive(world)) {
+    if (n >= max) break;
+    const rep = f.lastReport || (f.lastReport = emptyReport(world.turn));
+    for (const p of f.people.slice()) {
+      if (n >= max) break;
+      if (Math.hypot(p.x - cx, p.y - cy) > r) continue;
+      if (rng() > chance) continue;
+      killPerson(world, f, p.id, cause, rep, logs);
+      n++;
+    }
+  }
+  world.stats.killedByDisaster += n;
+  return n;
+}
+
+function crushInRadius(world, cx, cy, r, cause, logs, rng, chance = 1, max = 99) {
+  let n = 0;
+  for (const f of alive(world)) {
+    if (n >= max) break;
+    for (const st of f.structures.slice()) {
+      if (n >= max) break;
+      if (Math.hypot(st.x + 0.5 - cx, st.y + 0.5 - cy) > r) continue;
+      if (chance < 1 && rng() > chance) continue;
+      if (destroyStructure(world, f, st, cause, logs)) n++;
+    }
+  }
+  return n;
+}
+
+/* la gente que está en la zona de peligro sale corriendo */
+function fleeFrom(world, cx, cy, r, rng) {
+  let moved = 0;
+  for (const f of alive(world)) {
+    for (const p of f.people) {
+      if (Math.hypot(p.x - cx, p.y - cy) > r) continue;
+      const ang = Math.atan2(p.y - cy, p.x - cx) + (rng() - 0.5) * 1.1;
+      let ok = false;
+      for (let k = 1; k <= 8 && !ok; k++) {
+        const x = clamp(p.x + Math.cos(ang) * k, 1, W - 2);
+        const y = clamp(p.y + Math.sin(ang) * k, 1, H - 2);
+        const t = world.grid[Math.round(y)] && world.grid[Math.round(y)][Math.round(x)];
+        if (t && t.land && t.b !== 'agua') { p.x = x; p.y = y; p.tx = x; p.ty = y; ok = true; }
+      }
+      world.fx.push({ x: p.x, y: p.y, type: 'flee' });
+      if (ok) moved++;
+    }
+  }
+  return moved;
+}
+
+const DISASTERS = {
+  rayo:       { n: 'rayo',       icon: '⚡', desc: 'cae sobre un punto y quema el pasto' },
+  erupcion:   { n: 'erupción',   icon: '🌋', desc: 'la lava crece turno a turno y arrasa' },
+  inundacion: { n: 'inundación', icon: '🌊', desc: 'el agua sube, se lleva construcciones y obliga a huir' },
+  incendio:   { n: 'incendio',   icon: '🔥', desc: 'se propaga por el bosque y la pradera' },
+  tornado:    { n: 'tornado',    icon: '🌪', desc: 'avanza y se lleva lo que encuentra' }
+};
+
+function runDisaster(world, ds, rng, logs) {
+  const at = `${Math.round(ds.x)},${Math.round(ds.y)}`;
+
+  if (ds.type === 'rayo') {
+    world.fx.push({ x: ds.x, y: ds.y, type: 'bolt' });
+    const killed = killInRadius(world, ds.x, ds.y, ds.r, 'un rayo', rng, logs, 0.55, 2);
+    const crushed = crushInRadius(world, ds.x, ds.y, ds.r, 'un rayo', logs, rng, 0.3, 1);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (rng() < 0.5) addOverlay(world, 'burn', Math.round(ds.x) + dx, Math.round(ds.y) + dy, 3);
+    }
+    logs.push(`⚡ Un rayo cayó en (${at})`
+      + (killed ? ` y mató a ${killed}` : '')
+      + (crushed ? ` y destruyó ${crushed} construcción(es)` : '')
+      + (!killed && !crushed ? ': sólo chamuscó el pasto' : ''));
+    return;
+  }
+
+  if (ds.type === 'erupcion') {
+    const k = 1 - ds.ttl / Math.max(1, ds.ttl0);
+    ds.r = 1.3 + k * 3.6;
+    world.fx.push({ x: ds.x, y: ds.y, type: 'eruption', r: ds.r });
+    for (let y = Math.floor(ds.y - ds.r); y <= Math.ceil(ds.y + ds.r); y++) {
+      for (let x = Math.floor(ds.x - ds.r); x <= Math.ceil(ds.x + ds.r); x++) {
+        if (Math.hypot(x + 0.5 - ds.x, y + 0.5 - ds.y) > ds.r) continue;
+        const tile = world.grid[y] && world.grid[y][x];
+        if (!tile) continue;
+        addOverlay(world, 'lava', x, y, 8);
+        if (rng() < 0.18) world.fx.push({ x: x + 0.5, y: y + 0.5, type: 'spark' });
+      }
+    }
+    const fled = fleeFrom(world, ds.x, ds.y, ds.r + 2.2, rng);
+    const killed = killInRadius(world, ds.x, ds.y, ds.r, 'la lava', rng, logs, 0.3, 2);
+    const crushed = crushInRadius(world, ds.x, ds.y, ds.r, 'la lava', logs, rng, 0.25, 1);
+    logs.push(`🌋 El volcán de (${at}) erupciona: radio ${ds.r.toFixed(1)}`
+      + (fled ? `, ${fled} huyen` : '') + (killed ? `, ${killed} muertos` : '')
+      + (crushed ? `, ${crushed} construcción(es) bajo la lava` : ''));
+    return;
+  }
+
+  if (ds.type === 'inundacion') {
+    world.fx.push({ x: ds.x, y: ds.y, type: 'flood', r: ds.r });
+    for (let y = Math.floor(ds.y - ds.r); y <= Math.ceil(ds.y + ds.r); y++) {
+      for (let x = Math.floor(ds.x - ds.r); x <= Math.ceil(ds.x + ds.r); x++) {
+        if (Math.hypot(x + 0.5 - ds.x, y + 0.5 - ds.y) > ds.r) continue;
+        const tile = world.grid[y] && world.grid[y][x];
+        if (!tile) continue;
+        addOverlay(world, 'flood', x, y, ds.ttl + 1);
+        if (tile.b === 'pradera' || tile.b === 'bosque') addOverlay(world, 'limo', x, y, 10);
+      }
+    }
+    const fled = fleeFrom(world, ds.x, ds.y, ds.r + 1.2, rng);
+    let washed = 0;
+    for (const f of alive(world)) {
+      for (const st of f.structures.slice()) {
+        if (Math.hypot(st.x + 0.5 - ds.x, st.y + 0.5 - ds.y) > ds.r) continue;
+        if (rng() < 0.2) { if (destroyStructure(world, f, st, 'la inundación', logs)) washed++; }
+      }
+    }
+    logs.push(`🌊 El agua sube en (${at})` + (fled ? `: ${fled} huyen` : '')
+      + (washed ? `${fled ? ',' : ':'} ${washed} construcción(es) se perdieron` : ''));
+    return;
+  }
+
+  if (ds.type === 'incendio') {
+    world.fx.push({ x: ds.x, y: ds.y, type: 'fire', r: ds.r });
+    ds.r = Math.min(5.5, ds.r + 0.9);
+    for (let y = Math.floor(ds.y - ds.r); y <= Math.ceil(ds.y + ds.r); y++) {
+      for (let x = Math.floor(ds.x - ds.r); x <= Math.ceil(ds.x + ds.r); x++) {
+        if (Math.hypot(x + 0.5 - ds.x, y + 0.5 - ds.y) > ds.r) continue;
+        const tile = world.grid[y] && world.grid[y][x];
+        if (!tile || !tile.land) continue;
+        const dry = tile.b === 'bosque' || tile.b === 'pradera' || tile.b === 'estepa' || tile.b === 'tundra';
+        if (dry && rng() < 0.55) addOverlay(world, 'burn', x, y, 4);
+      }
+    }
+    const killed = killInRadius(world, ds.x, ds.y, ds.r * 0.8, 'el incendio', rng, logs, 0.25, 1);
+    const crushed = crushInRadius(world, ds.x, ds.y, ds.r * 0.8, 'el incendio', logs, rng, 0.2, 1);
+    logs.push(`🔥 Incendio en (${at}): radio ${ds.r.toFixed(1)}, ${killed} muertos`
+      + (crushed ? `, ${crushed} construcción(es) quemadas` : ''));
+    return;
+  }
+
+  if (ds.type === 'tornado') {
+    ds.x = clamp(ds.x + ds.vx, 2, W - 3);
+    ds.y = clamp(ds.y + ds.vy, 2, H - 3);
+    if (rng() < 0.3) { const a = Math.atan2(ds.vy, ds.vx) + (rng() - 0.5) * 1.4; ds.vx = Math.cos(a) * 1.7; ds.vy = Math.sin(a) * 1.7; }
+    world.fx.push({ x: ds.x, y: ds.y, type: 'tornado' });
+    const fled = fleeFrom(world, ds.x, ds.y, 2.6, rng);
+    const killed = killInRadius(world, ds.x, ds.y, 1.2, 'un tornado', rng, logs, 0.3, 1);
+    const crushed = crushInRadius(world, ds.x, ds.y, 1.6, 'un tornado', logs, rng, 0.4, 1);
+    logs.push(`🌪 El tornado pasó por (${at})` + (fled ? `: ${fled} huyen` : '')
+      + (killed ? `${fled ? ',' : ':'} ${killed} muertos` : '')
+      + (crushed ? `, ${crushed} construcción(es) destruidas` : ''));
+  }
+}
+
+function nearestTileOf(world, types, x0, y0, maxR) {
+  let best = null, bd = Infinity;
+  for (let y = Math.max(0, Math.round(y0) - maxR); y <= Math.min(H - 1, Math.round(y0) + maxR); y++) {
+    for (let x = Math.max(0, Math.round(x0) - maxR); x <= Math.min(W - 1, Math.round(x0) + maxR); x++) {
+      const t = world.grid[y][x];
+      if (!t || !types.includes(t.b)) continue;
+      const d = Math.hypot(x - x0, y - y0);
+      if (d < bd) { bd = d; best = t; }
+    }
+  }
+  return best;
+}
+
+function maybeDisaster(world, rng, logs) {
+  if (rng() > 0.34) return;
+  const cands = alive(world);
+  if (!cands.length) return;
+  /* le pega a quien menos desastres recibió: nadie se lleva todo el castigo */
+  const order = cands.slice().sort((a, b) => (world.hits[a.id] || 0) - (world.hits[b.id] || 0));
+  const f = order[0];
+  const roll = rng();
+  const type = roll < 0.32 ? 'rayo' : roll < 0.54 ? 'inundacion' : roll < 0.74 ? 'erupcion' : roll < 0.9 ? 'incendio' : 'tornado';
+  let cx, cy, r = 1.3;
+  if (type === 'inundacion') {
+    const t = nearestTileOf(world, ['agua', 'costa'], f.x, f.y, 14);
+    if (!t) return;
+    cx = t.x + 0.5; cy = t.y + 0.5; r = 2.6 + rng() * 1.8;
+  } else if (type === 'erupcion') {
+    const t = nearestTileOf(world, ['volcan'], f.x, f.y, 30) || nearestTileOf(world, ['montana'], f.x, f.y, 22);
+    if (!t) return;
+    cx = t.x + 0.5; cy = t.y + 0.5; r = 1.3;
+  } else {
+    const ang = rng() * Math.PI * 2, rad = rng() < 0.4 ? rng() * 2 : 2 + rng() * 7;
+    cx = clamp(f.x + Math.cos(ang) * rad, 2, W - 3);
+    cy = clamp(f.y + Math.sin(ang) * rad, 2, H - 3);
+    if (type === 'incendio') r = 1.6;
+  }
+  const ds = {
+    type, x: cx, y: cy, r,
+    ttl: type === 'rayo' ? 1 : type === 'erupcion' ? 4 + Math.round(rng() * 2) : 3 + Math.round(rng() * 2),
+    ttl0: 0
+  };
+  ds.ttl0 = ds.ttl;
+  if (type === 'tornado') { const a = rng() * Math.PI * 2; ds.vx = Math.cos(a) * 1.7; ds.vy = Math.sin(a) * 1.7; }
+  world.disasters.push(ds);
+  world.hits[f.id] = (world.hits[f.id] || 0) + 1;
+  world.stats.disasters++;
+  logs.push(`${DISASTERS[type].icon} Empieza ${DISASTERS[type].n} cerca de ${f.name} en (${Math.round(cx)},${Math.round(cy)})`);
+}
+
+function runDisasters(world, rng, logs) {
+  stepOverlay(world);
+  for (let i = world.disasters.length - 1; i >= 0; i--) {
+    const ds = world.disasters[i];
+    runDisaster(world, ds, rng, logs);
+    if (--ds.ttl <= 0) {
+      world.disasters.splice(i, 1);
+      if (ds.type === 'inundacion') logs.push(`🌊 El agua baja en (${Math.round(ds.x)},${Math.round(ds.y)}): queda limo fértil`);
+      if (ds.type === 'erupcion') logs.push(`🌋 La erupción de (${Math.round(ds.x)},${Math.round(ds.y)}) se apaga: la lava queda como roca`);
+      if (ds.type === 'incendio') logs.push(`🔥 El incendio de (${Math.round(ds.x)},${Math.round(ds.y)}) se apagó`);
+    }
+  }
+  maybeDisaster(world, rng, logs);
+}
+
+/* bandos: la aldea se pelea y una parte se va a vivir afuera */
+const BAND_NAMES = [
+  'los del río', 'la banda del norte', 'los sin casa', 'los que se fueron',
+  'el clan del humo', 'los errantes', 'la gente del otro lado', 'los forajidos'
+];
+
+function maybeSplit(world, f, rng, logs) {
+  if (!f.alive || f.people.length < 7) return;
+  const era = eraOf(f);
+  const crowded = f.shelters * era.cap < f.people.length;
+  const hungry = f.food < f.people.length * 1.1;
+  const tense = f.morale < 48;
+  const p = 0.03 + (crowded ? 0.06 : 0) + (hungry ? 0.07 : 0) + (tense ? 0.05 : 0);
+  if (rng() > p) return;
+
+  const rep = f.lastReport || (f.lastReport = emptyReport(world.turn));
+  const casualties = 1 + (rng() < 0.4 ? 1 : 0);
+  for (let i = 0; i < casualties && f.people.length > 3; i++) {
+    const v = f.people[Math.floor(rng() * f.people.length)];
+    if (v) killPerson(world, f, v.id, 'una pelea entre bandos', rep, logs);
+  }
+  const size = Math.max(2, Math.round(f.people.length * (0.14 + rng() * 0.14)));
+  if (f.people.length - size < 2) return;
+  const leavers = f.people.splice(f.people.length - size, size);
+
+  /* buscan un lugar lejos del campamento */
+  const ang = rng() * Math.PI * 2;
+  let tx = f.x, ty = f.y;
+  for (let k = 0; k < 10; k++) {
+    const x = clamp(Math.round(f.x + Math.cos(ang) * (6 + k)), 2, W - 3);
+    const y = clamp(Math.round(f.y + Math.sin(ang) * (6 + k)), 2, H - 3);
+    const t = world.grid[y] && world.grid[y][x];
+    if (t && t.land && t.b !== 'agua') { tx = x; ty = y; }
+  }
+  const g = {
+    id: ++roamerSeq, origin: f.id, color: f.color,
+    name: BAND_NAMES[Math.floor(rng() * BAND_NAMES.length)],
+    x: tx, y: ty, pop: leavers.length, figures: Math.min(6, leavers.length),
+    ttl: 5 + Math.round(rng() * 5)
+  };
+  world.roamers.push(g);
+  world.fx.push({ x: f.x + 0.5, y: f.y + 0.5, type: 'skirmish' });
+  world.fx.push({ x: tx, y: ty, type: 'flee' });
+  world.stats.splits++;
+  f.morale = clamp(f.morale - 6, 5, 100);
+  logs.push(`⚔️ ${f.name}: pelea entre bandos (${casualties} muertos); ${leavers.length} se van con ${g.name} a (${tx},${ty})`);
+  rep.events.push(`pelea entre bandos: ${leavers.length} se separaron (${g.name})`);
+}
+
+function runRoamers(world, rng, logs) {
+  for (let i = world.roamers.length - 1; i >= 0; i--) {
+    const g = world.roamers[i];
+    const facs = alive(world).map(f => ({ kind: 'fac', o: f, d: Math.hypot(f.x - g.x, f.y - g.y) }));
+    const others = world.roamers
+      .filter(o => o !== g)
+      .map(o => ({ kind: 'band', o, d: Math.hypot(o.x - g.x, o.y - g.y) }));
+    const best = facs.concat(others).sort((a, b) => a.d - b.d)[0];
+    if (!best) { world.roamers.splice(i, 1); continue; }
+
+    /* contra otro bando: se pelean por el territorio */
+    if (best.kind === 'band') {
+      const other = best.o;
+      if (best.d > 3.2) {
+        const k = 1.5 / Math.max(1, best.d);
+        g.x = clamp(g.x + (other.x - g.x) * k, 2, W - 3);
+        g.y = clamp(g.y + (other.y - g.y) * k, 2, H - 3);
+      } else if (rng() < 0.75) {
+        g.pop -= 1 + (rng() < 0.4 ? 1 : 0);
+        other.pop -= 1;
+        world.fx.push({ x: (g.x + other.x) / 2 + 0.5, y: (g.y + other.y) / 2 + 0.5, type: 'skirmish' });
+        world.stats.fights++;
+        const j = world.roamers.indexOf(other);
+        const dead = [];
+        if (other.pop <= 0) { world.roamers.splice(j, 1); dead.push(other.name); }
+        if (g.pop <= 0) { world.roamers.splice(i, 1); dead.push(g.name); }
+        logs.push(`⚔️ ${g.name} y ${other.name} se pelearon el territorio`
+          + (dead.length ? `: se deshizo ${dead.join(' y ')}` : ': quedaron heridos'));
+        continue;
+      }
+      if (--g.ttl <= 0) {
+        world.roamers.splice(i, 1);
+        logs.push(`🏴 ${g.name} se dispersó`);
+      }
+      continue;
+    }
+
+    const target = best.o;
+    const d = best.d;
+    if (d > 2.8) {
+      const k = 1.5 / Math.max(1, d);
+      g.x = clamp(g.x + (target.x - g.x) * k, 2, W - 3);
+      g.y = clamp(g.y + (target.y - g.y) * k, 2, H - 3);
+    } else if (rng() < 0.7) {
+      const stolen = Math.min(target.food, 1 + rng() * 2);
+      target.food -= stolen;
+      const rep = target.lastReport || (target.lastReport = emptyReport(world.turn));
+      world.fx.push({ x: target.x + 0.5, y: target.y + 0.5, type: 'skirmish' });
+      let txt = `les sacaron ${stolen.toFixed(1)} de comida`;
+      if ((target.buildings.muralla || 0) > 0) {
+        g.pop -= 2;
+        txt += ' pero la muralla los rechazó';
+      } else if (rng() < 0.35) {
+        const v = target.people[Math.floor(rng() * target.people.length)];
+        if (v) { killPerson(world, target, v.id, 'un saqueo', rep, logs); txt += ' y mataron a 1'; }
+      }
+      logs.push(`🏴 ${g.name} atacó ${target.name}: ${txt}`);
+      world.stats.raids++;
+      if (g.pop <= 0) {
+        world.roamers.splice(i, 1);
+        logs.push(`🏴 ${g.name} se deshizo en el intento`);
+        continue;
+      }
+    }
+    if (--g.ttl <= 0) {
+      world.roamers.splice(i, 1);
+      logs.push(`🏴 ${g.name} se dispersó`);
+    }
+  }
+}
+
+/* si dos aldeas se acercan demasiado, se pelean */
+function runSkirmish(world, rng, logs) {
+  const list = alive(world);
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const A = list[i], B = list[j];
+    if (Math.hypot(A.x - B.x, A.y - B.y) > 4) continue;
+    if (rng() > 0.35) continue;
+    for (const [X, Y] of [[A, B], [B, A]]) {
+      const v = X.people[Math.floor(rng() * X.people.length)];
+      const rep = X.lastReport || (X.lastReport = emptyReport(world.turn));
+      if (v) killPerson(world, X, v.id, `una escaramuza con ${Y.name}`, rep, logs);
+    }
+    world.fx.push({ x: (A.x + B.x) / 2 + 0.5, y: (A.y + B.y) / 2 + 0.5, type: 'skirmish' });
+    world.stats.fights++;
+    logs.push(`⚔️ Escaramuza entre ${A.name} y ${B.name}: cayeron dos`);
+  }
+}
+
 /* ---------------------------- eventos ---------------------------- */
 const GLOBAL_EVENTS = [
   { n: 'lluvia fértil', run(w, logs) { for (const fa of alive(w)) { fa.food += 3; fa.morale = clamp(fa.morale + 3, 5, 100); } logs.push('lluvia fértil: +3 comida y +3 ánimo para todos'); } },
@@ -678,7 +1106,16 @@ const PERSONAL_EVENTS = [
   { n: 'veta nueva', run: (w, f) => { f.mat += 3; return 'hallazgo de una veta: +3 materiales'; } },
   { n: 'enfermedad', run: (w, f, rng, rep, logs) => { if ((f.buildings && f.buildings.muralla) || f.shelters >= 2) { f.morale = clamp(f.morale - 5, 5, 100); return 'enfermedad contenida por los refugios'; } const v = f.people[Math.floor(rng() * f.people.length)]; if (v) killPerson(w, f, v.id, 'una enfermedad', rep, logs); return 'enfermedad: −1 persona'; } },
   { n: 'caravana', run: (w, f) => { f.food += 2; f.mat += 2; return 'caravana de paso: +2 comida y +2 materiales'; } },
-  { n: 'temblor', run: (w, f) => { if (f.shelters > 0 && f.progress < 1.5) { f.shelters--; f.morale = clamp(f.morale - 6, 5, 100); return 'un temblor derribó un refugio'; } f.progress = Math.max(0, f.progress - 1.5); return 'temblor: obra retrasada'; } },
+  { n: 'temblor', run: (w, f, rng, rep, logs) => {
+    if ((f.structures || []).length) {
+      const st = f.structures[Math.floor(rng() * f.structures.length)];
+      destroyStructure(w, f, st, 'un temblor', logs);
+      return `un temblor derribó ${labelOf(st.key)}`;
+    }
+    if (f.shelters > 0 && f.progress < 1.5) { f.shelters--; f.morale = clamp(f.morale - 6, 5, 100); return 'un temblor derribó un refugio'; }
+    f.progress = Math.max(0, f.progress - 1.5);
+    return 'temblor: obra retrasada';
+  } },
   { n: 'inspiración', run: (w, f) => { f.sci += 2; f.morale = clamp(f.morale + 4, 5, 100); return 'inspiración: +2 ciencia'; } },
   { n: 'migración', run: (w, f) => { if (f.shelters * 4 > f.people.length && f.food > 5 && f.people.length < 20) { f.food -= 2; addPerson(f, w.rng); return 'gente nueva se suma'; } return 'pasó una migración sin quedarse'; } }
 ];
@@ -717,6 +1154,12 @@ function roundEvents(world, rng, logs) {
       logs.push(`${HAZARDS[t.hazard].n} en (${t.x},${t.y})${victim ? '' : ': sin víctimas'}`);
     }
   }
+
+  /* vida del planeta: desastres, bandos y peleas */
+  runDisasters(world, rng, logs);
+  for (const f of shuffle(alive(world), rng)) maybeSplit(world, f, rng, logs);
+  runRoamers(world, rng, logs);
+  runSkirmish(world, rng, logs);
 }
 
 function checkEra(world, f, logs) {
@@ -947,6 +1390,7 @@ function snapshot(world, god) {
       nextEraAt: nextEra(f) ? nextEra(f).sci : null,
       nextEraIn: nextEra(f) ? Math.max(0, Math.ceil(nextEra(f).sci - f.sci)) : null,
       buildings: f.buildings || {}, buildingCount: buildingCount(f),
+      structures: (f.structures || []).map(s2 => ({ key: s2.key, x: s2.x, y: s2.y })),
       project: f.project || null, blueprint: f.blueprint || null,
       submitted: f.submitted, fallback: f.fallback,
       online: Date.now() - f.lastSeen < 90000,
@@ -957,7 +1401,19 @@ function snapshot(world, god) {
       people: f.people.map(p => ({ id: p.id, x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100, task: p.task }))
     })),
     log: world.log.slice(0, 120),
-    fx: world.fx
+    fx: world.fx,
+    disasters: world.disasters.map(ds => ({
+      type: ds.type, icon: DISASTERS[ds.type].icon, n: DISASTERS[ds.type].n,
+      x: Math.round(ds.x * 100) / 100, y: Math.round(ds.y * 100) / 100,
+      r: Math.round(ds.r * 100) / 100, ttl: ds.ttl
+    })),
+    roamers: world.roamers.map(g => ({
+      id: g.id, name: g.name, origin: g.origin, color: g.color,
+      x: Math.round(g.x * 100) / 100, y: Math.round(g.y * 100) / 100,
+      pop: g.pop, figures: g.figures, ttl: g.ttl
+    })),
+    overlay: world.overlay,
+    stats: world.stats
   };
 }
 
@@ -970,7 +1426,7 @@ function mapSnapshot(world) {
 }
 
 module.exports = {
-  W, H, MAX_TURNS, BIOMES, HAZARDS, TASKS, FACTIONS, POWERS, ERAS, BUILDINGS,
+  W, H, MAX_TURNS, BIOMES, HAZARDS, TASKS, FACTIONS, POWERS, ERAS, BUILDINGS, DISASTERS,
   createWorld, resolveTurn, setOrders, applyPower, snapshot, mapSnapshot,
   scoreOf, totalScore, botOrders, distribute, alive
 };

@@ -64,6 +64,30 @@ El archivo `prompt-para-ia.md` tiene el texto para pegarle a Claude, Codex y Ope
   - por facción: lluvia fértil, bendición, plaga, terremoto
   - por casillero: meteorito, veta oculta, fertilidad
 - **Crónica** de todo lo que pasa, con los eventos, las muertes y tus intervenciones.
+- **Vida del planeta** (franja abajo del mapa): desastres activos con su epicentro y turnos que les quedan,
+  bandos sueltos con su población, y los contadores de la partida (desastres, separaciones, saqueos,
+  escaramuzas, ruinas y muertes por desastre).
+
+## La vida del planeta
+
+El mundo no espera órdenes. Después de cada turno pasan cosas solas:
+
+- **Desastres** (⚡ rayo, 🌋 erupción, 🌊 inundación, 🔥 incendio, 🌪 tornado): arranca uno cada ~3 turnos
+  y le pega a quien menos desastres recibió, así nadie se lleva todo el castigo.
+  - Matan gente y derrumban construcciones, con tope por turno, y a veces la aldea **huye**: la gente
+    se muda a un casillero cercano y el campamento se corre.
+  - Dejan marcas: **lava** (roca, no se puede trabajar), agua, quemado, **limo** (queda fértil) y ruinas.
+  - La inundación se lleva defensas pero deja limo: lo que perdés en casas lo ganás en comida.
+- **Estructuras**: cada refugio y cada edificio tiene su lugar en el mapa, alrededor del campamento.
+  Si un desastre las alcanza, se derrumban y hay que volver a pagarlas.
+- **Bandos**: con hacinamiento, hambre o ánimo bajo, una parte de la aldea se separa (mínimo 7 personas)
+  y se va a vivir afuera. Caminan por el mapa, **saquean** aldeas cercanas (comida, materiales, a veces
+  una vida) y se pelean entre ellos cuando se cruzan. Se dispersan solos después de unos turnos.
+- **Escaramuzas**: dos aldeas demasiado cerca se pelean por el territorio.
+
+Todo queda en la crónica con sus íconos. En el mapa, las estructuras son cuadraditos del color de la
+facción (la muralla gris), los bandos un anillo punteado con su bandera y los desastres un halo que late
+con su ícono: aun en la vista de planeta se ven, porque tienen tamaño mínimo en pantalla.
 
 ## Reglas (resumen)
 

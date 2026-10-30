@@ -45,6 +45,7 @@ const stat = () => ({
 });
 const acc = Object.fromEntries(IDS.map(id => [id, stat()]));
 const partidas = [];
+const vida = { disasters: 0, splits: 0, raids: 0, fights: 0, ruins: 0, killedByDisaster: 0, estructuras: 0, extintas: 0 };
 
 let turnosTotales = 0;
 
@@ -74,8 +75,11 @@ for (const seed of seeds) {
 
   const ranked = w.factions.slice().sort((a, b) => engine.totalScore(b) - engine.totalScore(a));
   turnosTotales += turnos;
+  for (const k of ['disasters', 'splits', 'raids', 'fights', 'ruins', 'killedByDisaster']) vida[k] += w.stats[k] || 0;
+  for (const f of w.factions) vida.estructuras += (f.structures || []).length;
   partidas.push({
     seed, turnos, paridad: w.parity,
+    vida: { ...w.stats },
     ranking: ranked.map((f, i) => ({
       puesto: i + 1, id: f.id, pts: engine.totalScore(f),
       pop: f.people.length, ref: f.shelters,
@@ -153,16 +157,25 @@ for (const id of IDS) {
   console.log(pad(id, 12) + num(f2(s.edif / p), 7) + '   ' + Object.keys(engine.BUILDINGS).map(k => pad(f1((s.tipos[k] || 0) / p), 9)).join(''));
 }
 
+console.log(`\nVIDA DEL PLANETA (promedio por partida)`);
+const pv = n || 1;
+console.log(`  desastres ${f1(vida.disasters / pv)} · separaciones ${f1(vida.splits / pv)} · saqueos ${f1(vida.raids / pv)}`
+  + ` · escaramuzas ${f1(vida.fights / pv)} · ruinas ${f1(vida.ruins / pv)} · muertes por desastre ${f1(vida.killedByDisaster / pv)}`);
+console.log(`  estructuras en pie al final: ${f1(vida.estructuras / pv)}`);
+const extintasTot = IDS.reduce((a, id) => a + acc[id].extintas, 0);
+console.log(`  extinciones: ${extintasTot} de ${n * 3} aldeas · partidas sin bajas: ${partidas.filter(p => (p.vida.killedByDisaster || 0) === 0).length}/${n}`);
+
 /* --------------------------- crónica --------------------------- */
-const seedCronica = cronicaSeed ?? seeds[0];
-const w = engine.createWorld({ seed: seedCronica });
+const seedCronica = cronicaSeed ?? seeds[0];const w = engine.createWorld({ seed: seedCronica });
 console.log(`\nCRONICA — semilla ${seedCronica} (paridad ${w.parity}%)`);
-const corto = t => t.replace(/^[^:]+:\s*/, '');
+/* saca el "Claude: " del evento personal, pero no toca los desastres (llevan coordenadas) */
+const corto = t => /^[^:]*\(\d+,\d+\)[^:]*:/.test(t) ? t : t.replace(/^[^:]+:\s*/, '');
 const sigla = { claude: 'Cl', codex: 'Cx', opencode: 'Op' };
 while (w.phase === 'orders') {
   const r = engine.resolveTurn(w);
   if (!r.ok) break;
-  const marcas = ['nació', 'refugio', 'hambruna', 'extinguió', 'plaga', 'enfermedad', 'meteorito', 'temblor', 'era'];
+  const marcas = ['nació', 'refugio', 'hambruna', 'extinguió', 'plaga', 'enfermedad', 'meteorito', 'temblor', 'era',
+    '⚡', '🌋', '🌊', '🔥', '🌪', '⚔️', '🏴', 'derrum'];
   const notas = r.logs.filter(l => marcas.some(m => l.includes(m))).map(corto).slice(0, 3);
   const ordenes = w.factions.map(f => {
     const o = f.lastReport && f.lastReport.orders;
